@@ -137,15 +137,55 @@ jobs:
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android NDK and configure environment
+      - name: Setup Android SDK components and licenses
         run: |
-          # Using NDK 26.1.10909125 (LTS r26b) for Tauri 2 Android toolchain compatibility [uncertain]
-          yes | sdkmanager "ndk;26.1.10909125"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "Accepting Android SDK licenses..."
+          yes | sdkmanager --licenses || true
+
+          # Determine compileSdk NN (check src-tauri/gen/android build.gradle if exists, default 34)
+          NN=34
+          if [ -f "src-tauri/gen/android/app/build.gradle.kts" ]; then
+            PARSED_NN=$(grep -oE "compileSdk\s*=\s*[0-9]+" src-tauri/gen/android/app/build.gradle.kts | grep -oE "[0-9]+" | head -n 1)
+            [ -n "$PARSED_NN" ] && NN=$PARSED_NN
+          elif [ -f "src-tauri/gen/android/app/build.gradle" ]; then
+            PARSED_NN=$(grep -oE "compileSdkVersion\s+[0-9]+" src-tauri/gen/android/app/build.gradle | grep -oE "[0-9]+" | head -n 1)
+            [ -n "$PARSED_NN" ] && NN=$PARSED_NN
+          fi
+          echo "Selected Android API level: $NN"
+
+          echo "Installing platform-tools, platforms;android-$NN, and build-tools;$NN.0.0..."
+          if ! sdkmanager --install "platform-tools" "platforms;android-$NN" "build-tools;$NN.0.0"; then
+            echo "::error::Failed to install requested Android SDK packages. Listing installed packages:"
+            sdkmanager --list_installed
+            exit 1
+          fi
+
+      - name: Configure Android NDK
+        run: |
+          TARGET_NDK=""
+          if [ -n "$ANDROID_NDK_LATEST_HOME" ] && [ -d "$ANDROID_NDK_LATEST_HOME" ]; then
+            echo "Using runner preinstalled NDK from ANDROID_NDK_LATEST_HOME: $ANDROID_NDK_LATEST_HOME"
+            TARGET_NDK="$ANDROID_NDK_LATEST_HOME"
+          elif [ -d "$ANDROID_HOME/ndk" ] && [ -n "$(ls -A "$ANDROID_HOME/ndk" 2>/dev/null)" ]; then
+            LATEST_INSTALLED_NDK=$(ls -d "$ANDROID_HOME/ndk/"* | sort -V | tail -n 1)
+            echo "Found installed NDK: $LATEST_INSTALLED_NDK"
+            TARGET_NDK="$LATEST_INSTALLED_NDK"
+          else
+            echo "No preinstalled NDK found. Installing specific NDK 26.1.10909125 via sdkmanager..."
+            yes | sdkmanager --install "ndk;26.1.10909125"
+            if [ -d "$ANDROID_HOME/ndk/26.1.10909125" ]; then
+              TARGET_NDK="$ANDROID_HOME/ndk/26.1.10909125"
+            fi
+          fi
+
+          if [ -z "$TARGET_NDK" ] || [ ! -d "$TARGET_NDK" ]; then
+            echo "::error::NDK directory not found at '$TARGET_NDK'! NDK configuration failed."
+            exit 1
+          fi
+
+          echo "Configuring NDK_HOME and ANDROID_NDK_HOME to $TARGET_NDK"
+          echo "NDK_HOME=$TARGET_NDK" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$TARGET_NDK" >> $GITHUB_ENV
 
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
@@ -154,8 +194,36 @@ jobs:
           shared-key: "taghvim-android"
           cache-on-failure: true
 
-      - name: Install npm dependencies
-        run: npm ci
+      - name: Self-healing npm install
+        run: |
+          INSTALLED_OK=0
+          echo "Attempting npm ci..."
+          if npm ci && node -e "require('@tauri-apps/cli')" && npm ls @tauri-apps/cli; then
+            INSTALLED_OK=1
+            echo "@tauri-apps/cli verification passed."
+          else
+            echo "Initial npm ci or native verification failed. Falling back to clean install..."
+          fi
+
+          if [ "$INSTALLED_OK" -ne 1 ]; then
+            rm -rf node_modules package-lock.json
+            if ! npm install --include=optional; then
+              echo "::error::Recovery npm install --include=optional failed."
+              exit 1
+            fi
+            if ! node -e "require('@tauri-apps/cli')"; then
+              echo "::error::Native binding verification failed after recovery install."
+              exit 1
+            fi
+            if ! npm ls @tauri-apps/cli; then
+              echo "::error::npm ls verification failed after recovery install."
+              exit 1
+            fi
+            echo "::warning::lockfile was out of sync, regenerated in CI"
+          fi
+
+      - name: Frontend build check
+        run: npm run build
 
       - name: Extract Taghvim version
         run: |
@@ -245,3 +313,21 @@ jobs:
           name: Taghvim-Android-APK
           path: ${{ env.OUTPUT_APK }}
           if-no-files-found: error
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== Diagnostic Information ==="
+          echo "Node version: $(node -v)"
+          echo "npm version: $(npm -v)"
+          echo "rustc version: $(rustc -V)"
+          echo "cargo version: $(cargo -V)"
+          echo "Java version:"
+          java -version 2>&1
+          echo "Android environment paths:"
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "NDK_HOME: $NDK_HOME"
+          echo "=== Installed SDK packages ==="
+          sdkmanager --list_installed 2>&1 || true
+          echo "=== npm dependencies (depth=0, top 40 lines) ==="
+          npm ls --depth=0 2>&1 | head -n 40

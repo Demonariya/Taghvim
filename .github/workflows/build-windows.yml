@@ -159,8 +159,55 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref_type == 'tag' || github.ref == 'refs/heads/main' }}
 
-      - name: Install npm dependencies
-        run: npm ci
+      - name: Self-healing npm install
+        shell: pwsh
+        run: |
+          $installedOk = $false
+          Write-Host "Attempting standard npm ci..."
+          try {
+            & npm ci
+            if ($LASTEXITCODE -eq 0) {
+              & node -e "require('@tauri-apps/cli')"
+              $nodeExit = $LASTEXITCODE
+              & npm ls @tauri-apps/cli
+              $lsExit = $LASTEXITCODE
+              if ($nodeExit -eq 0 -and $lsExit -eq 0) {
+                $installedOk = $true
+                Write-Host "@tauri-apps/cli verification passed."
+              }
+            }
+          } catch {
+            Write-Host "npm ci or initial verification failed with exception: $_"
+          }
+
+          if (-not $installedOk) {
+            Write-Host "Initial npm ci or native verification failed. Regenerating lockfile..."
+            if (Test-Path "node_modules") {
+              Remove-Item -Recurse -Force "node_modules"
+            }
+            if (Test-Path "package-lock.json") {
+              Remove-Item -Force "package-lock.json"
+            }
+            & npm install --include=optional
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::error::Recovery npm install --include=optional failed."
+              exit 1
+            }
+            & node -e "require('@tauri-apps/cli')"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::error::Native binding verification failed after recovery install."
+              exit 1
+            }
+            & npm ls @tauri-apps/cli
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::error::npm ls verification failed after recovery install."
+              exit 1
+            }
+            Write-Host "::warning::lockfile was out of sync, regenerated in CI"
+          }
+
+      - name: Frontend build check
+        run: npm run build
 
       - name: Extract version and tag
         shell: pwsh
@@ -234,3 +281,15 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
             Taghvim_*_x64-portable.exe
           if-no-files-found: error
+
+      - name: Diagnostics on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host "=== Diagnostic Information ==="
+          Write-Host "Node version: $(node -v)"
+          Write-Host "npm version: $(npm -v)"
+          Write-Host "rustc version: $(rustc -V)"
+          Write-Host "cargo version: $(cargo -V)"
+          Write-Host "=== npm dependencies (depth=0, top 40 lines) ==="
+          npm ls --depth=0 2>&1 | Select-Object -First 40
