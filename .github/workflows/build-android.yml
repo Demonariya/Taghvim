@@ -17,6 +17,109 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Preflight checks
+        run: |
+          FAILED=0
+
+          # 1. Exactly one lockfile exists and it is package-lock.json
+          if [ ! -f "package-lock.json" ]; then
+            echo "::error::Preflight check failed: package-lock.json does not exist."
+            FAILED=1
+          fi
+          for lock in "bun.lock" "bun.lockb" "yarn.lock" "pnpm-lock.yaml"; do
+            if [ -f "$lock" ]; then
+              echo "::error::Preflight check failed: Forbidden lockfile '$lock' found in repository."
+              FAILED=1
+            fi
+          done
+
+          # 2. tauri.conf.json commands and package.json scripts contain no bun, pnpm or yarn
+          node -e '
+            const pkg = require("./package.json");
+            const conf = require("./src-tauri/tauri.conf.json");
+            const forbidden = ["bun", "pnpm", "yarn"];
+            let bad = false;
+            for (const [name, script] of Object.entries(pkg.scripts || {})) {
+              for (const tool of forbidden) {
+                if (new RegExp("\\b" + tool + "\\b").test(script)) {
+                  console.log(`::error::Preflight check failed: package.json script "${name}" contains forbidden tool "${tool}": ${script}`);
+                  bad = true;
+                }
+              }
+            }
+            const cmds = [conf.build?.beforeBuildCommand, conf.build?.beforeDevCommand].filter(Boolean);
+            for (const cmd of cmds) {
+              for (const tool of forbidden) {
+                if (new RegExp("\\b" + tool + "\\b").test(cmd)) {
+                  console.log(`::error::Preflight check failed: tauri.conf.json command contains forbidden tool "${tool}": ${cmd}`);
+                  bad = true;
+                }
+              }
+            }
+            if (bad) process.exit(1);
+          ' || FAILED=1
+
+          # 3. PNG icons listed in tauri.conf.json exist
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const conf = require("./src-tauri/tauri.conf.json");
+            let bad = false;
+            for (const icon of conf.bundle?.icon || []) {
+              if (icon.endsWith(".png")) {
+                const p = path.join("src-tauri", icon);
+                if (!fs.existsSync(p)) {
+                  console.log(`::error::Preflight check failed: Icon file "${p}" not found.`);
+                  bad = true;
+                }
+              }
+            }
+            if (bad) process.exit(1);
+          ' || FAILED=1
+
+          # 4. src/assets/fonts/digikala.ttf exists and is the ONLY font file under src/assets/fonts/
+          if [ ! -f "src/assets/fonts/digikala.ttf" ]; then
+            echo "::error::Preflight check failed: src/assets/fonts/digikala.ttf does not exist."
+            FAILED=1
+          fi
+          EXTRA_FONTS=$(find src/assets/fonts -maxdepth 1 -type f ! -name "digikala.ttf")
+          if [ -n "$EXTRA_FONTS" ]; then
+            echo "::error::Preflight check failed: Unexpected extra font files found in src/assets/fonts/: $EXTRA_FONTS"
+            FAILED=1
+          fi
+
+          # 5. Version matches across package.json, tauri.conf.json, and Cargo.toml; on tag pushes tag equals v<version>
+          node -e '
+            const fs = require("fs");
+            const pkg = require("./package.json");
+            const conf = require("./src-tauri/tauri.conf.json");
+            const cargo = fs.readFileSync("src-tauri/Cargo.toml", "utf8");
+            const match = cargo.match(/\[package\][\s\S]*?version\s*=\s*"([^"]+)"/);
+            const cargoVersion = match ? match[1] : null;
+
+            if (!cargoVersion) {
+              console.log("::error::Preflight check failed: Could not parse version from src-tauri/Cargo.toml.");
+              process.exit(1);
+            }
+            if (pkg.version !== conf.version || pkg.version !== cargoVersion) {
+              console.log(`::error::Preflight check failed: Version mismatch across package.json (${pkg.version}), tauri.conf.json (${conf.version}), Cargo.toml (${cargoVersion}).`);
+              process.exit(1);
+            }
+            if (process.env.GITHUB_REF_TYPE === "tag") {
+              const expectedTag = "v" + pkg.version;
+              const actualTag = process.env.GITHUB_REF_NAME;
+              if (actualTag !== expectedTag) {
+                console.log(`::error::Preflight check failed: Tag "${actualTag}" does not match manifest version tag "${expectedTag}".`);
+                process.exit(1);
+              }
+            }
+            console.log(`Preflight check passed: Versions match across all manifests (${pkg.version}).`);
+          ' || FAILED=1
+
+          if [ "$FAILED" -ne 0 ]; then
+            exit 1
+          fi
+
       - name: Setup Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:
