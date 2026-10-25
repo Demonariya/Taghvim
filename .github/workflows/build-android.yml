@@ -1,0 +1,144 @@
+name: Build Android
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install stable Rust toolchain for Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK and configure environment
+        run: |
+          # Using NDK 26.1.10909125 (LTS r26b) for Tauri 2 Android toolchain compatibility [uncertain]
+          yes | sdkmanager "ndk;26.1.10909125"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+          shared-key: "taghvim-android"
+          cache-on-failure: true
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Extract Taghvim version
+        run: |
+          VERSION=$(node -e "console.log(require('./src-tauri/tauri.conf.json').version)")
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not extract version from src-tauri/tauri.conf.json"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "TAG=v$VERSION" >> $GITHUB_ENV
+          echo "Detected version: $VERSION (tag: v$VERSION)"
+
+      - name: Initialize Tauri Android project if not committed
+        run: |
+          if [ ! -d "src-tauri/gen/android" ]; then
+            echo "src-tauri/gen/android not found. Running tauri android init..."
+            npm run tauri android init -- --ci
+          else
+            echo "src-tauri/gen/android already present."
+          fi
+
+      - name: Build and Sign Android APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # Check whether signing secrets are configured
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASS" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASS" ]; then
+            echo "Production Android keystore secrets found. Building release APK..."
+            npm run tauri android build -- --apk --target aarch64 --target armv7
+
+            RAW_APK=$(find src-tauri/gen/android -name "*.apk" | grep -i "release" | head -n 1)
+            if [ -z "$RAW_APK" ]; then
+              RAW_APK=$(find src-tauri/gen/android -name "*.apk" | head -n 1)
+            fi
+
+            if [ -z "$RAW_APK" ]; then
+              echo "::error::No APK produced by Tauri Android build!"
+              exit 1
+            fi
+
+            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+            BUILD_TOOLS_VERSION=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
+            APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+
+            OUTPUT_APK="Taghvim_${VERSION}_android.apk"
+            "$APKSIGNER" sign \
+              --ks release.keystore \
+              --ks-pass "pass:$KEYSTORE_PASS" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --key-pass "pass:$KEY_PASS" \
+              --out "$OUTPUT_APK" \
+              "$RAW_APK"
+            rm -f release.keystore
+            echo "Generated signed release APK: $OUTPUT_APK"
+            echo "OUTPUT_APK=$OUTPUT_APK" >> $GITHUB_ENV
+          else
+            echo "No keystore secrets detected. Building installable debug-signed APK..."
+            npm run tauri android build -- --apk --debug --target aarch64 --target armv7
+
+            RAW_APK=$(find src-tauri/gen/android -name "*.apk" | head -n 1)
+            if [ -z "$RAW_APK" ]; then
+              echo "::error::No debug APK produced by Tauri Android build!"
+              exit 1
+            fi
+
+            OUTPUT_APK="Taghvim_${VERSION}_android-debug.apk"
+            cp "$RAW_APK" "$OUTPUT_APK"
+            echo "Generated debug-signed APK: $OUTPUT_APK"
+            echo "OUTPUT_APK=$OUTPUT_APK" >> $GITHUB_ENV
+          fi
+
+      - name: Attach Android APK to GitHub Draft Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Ensuring draft release $TAG exists..."
+          gh release view "$TAG" || gh release create "$TAG" --draft --title "Taghvim v$VERSION"
+          echo "Uploading $OUTPUT_APK to release $TAG..."
+          gh release upload "$TAG" "$OUTPUT_APK" --clobber
+
+      - name: Upload APK as GitHub Actions Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Taghvim-Android-APK
+          path: ${{ env.OUTPUT_APK }}
+          if-no-files-found: error

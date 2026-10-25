@@ -1,0 +1,6 @@
+{
+  "name": "Taghvim - تقویم",
+  "description": "تقویم پیشرفته جلالی (شمسی) با استایل سایبرپانک، ادغام مناسبت‌های time.ir، تبدیل تاریخ، یادداشت‌ها و آیکون سینی پویا برای ویندوز",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Digikala New";
+  src: url("/src/assets/fonts/digikala.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@theme {
+  --font-sans: "Digikala New", sans-serif;
+  --color-bg: #0d0f14;
+  --color-surface: #14171f;
+  --color-surface-hover: #1b202c;
+  --color-border: #232834;
+  --color-text: #e6e9ef;
+  --color-muted: #8b93a5;
+  --color-accent: #22d3ee;
+  --color-holiday: #ef4444;
+}
+
+:root {
+  --bg: #0d0f14;
+  --surface: #14171f;
+  --surface-hover: #1b202c;
+  --border: #232834;
+  --text: #e6e9ef;
+  --muted: #8b93a5;
+  --accent: #22d3ee;
+  --holiday: #ef4444;
+}
+
+/* Enforce Digikala New font everywhere with weight 400 and zero font-synthesis */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  font-family: "Digikala New", sans-serif !important;
+  font-weight: 400 !important;
+  font-synthesis: none !important;
+  -webkit-font-synthesis: none !important;
+}
+
+html,
+body,
+button,
+input,
+select,
+textarea,
+dialog,
+[role="dialog"] {
+  font-family: "Digikala New", sans-serif !important;
+  font-weight: 400 !important;
+  font-synthesis: none !important;
+  -webkit-font-synthesis: none !important;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  user-select: none;
+  -webkit-user-select: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Monospace clock and tabular digits use Digikala New with tabular-nums */
+.font-mono-num,
+.clock-text,
+code,
+kbd {
+  font-family: "Digikala New", sans-serif !important;
+  font-variant-numeric: tabular-nums !important;
+  font-feature-settings: "tnum" 1 !important;
+  letter-spacing: 0.04em;
+}
+
+/* Minimal 1px flat scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0d0f14;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #232834;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+/* =========================================================================
+   Android Mobile Specific Layout & Touch Rules (Desktop remains untouched)
+   ========================================================================= */
+
+html[data-platform="android"] body {
+  width: 100%;
+  height: 100%;
+  min-height: 100dvh;
+}
+
+/* Full-screen container on Android with safe-area insets */
+html[data-platform="android"] .android-full-screen {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 100dvh !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px) !important;
+}
+
+/* Touch targets >= 48px on Android */
+html[data-platform="android"] button:not(.btn-compact),
+html[data-platform="android"] input,
+html[data-platform="android"] select,
+html[data-platform="android"] textarea {
+  min-height: 48px;
+}
+
+html[data-platform="android"] .touch-target-48 {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+/* Dialogs as full-height bottom sheets on Android */
+html[data-platform="android"] .dialog-overlay {
+  align-items: flex-end !important;
+  padding: 0 !important;
+}
+
+html[data-platform="android"] .dialog-sheet {
+  width: 100% !important;
+  max-width: 100% !important;
+  border-radius: 1.25rem 1.25rem 0 0 !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  max-height: 92dvh !important;
+  padding-bottom: env(safe-area-inset-bottom, 16px) !important;
+}
+
