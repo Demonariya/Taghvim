@@ -171,13 +171,15 @@ export default function App() {
   // Listen to Tauri jump-today event from Tray right-click menu
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    if (isTauri()) {
+    if (isTauri() && !isAndroid) {
       import('@tauri-apps/api/event').then(({ listen }) => {
         listen('taghvim-jump-today', () => {
           handleJumpToday();
         }).then((cleanup) => {
           unlisten = cleanup;
         });
+      }).catch((err) => {
+        console.warn('Tray listener registration error:', err);
       });
     }
     return () => {

@@ -11,22 +11,23 @@ use tauri::{
     image::Image,
     menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, PhysicalPosition,
+    AppHandle, Manager, PhysicalPosition, WebviewWindowBuilder,
 };
 
 use crate::calendar::{format_full_persian_date, get_today_jalali};
 use crate::notes::NotesManager;
 
-static DIGIKALA_FONT: OnceLock<fontdue::Font> = OnceLock::new();
+static DIGIKALA_FONT: OnceLock<Option<fontdue::Font>> = OnceLock::new();
 
 /// Returns the embedded "Digikala New" font loaded from `src/assets/fonts/digikala.ttf`.
 /// Never loads any system font.
-fn get_font() -> &'static fontdue::Font {
-    DIGIKALA_FONT.get_or_init(|| {
-        let font_bytes = include_bytes!("../../src/assets/fonts/digikala.ttf");
-        fontdue::Font::from_bytes(font_bytes as &[u8], fontdue::FontSettings::default())
-            .expect("Failed to parse embedded Digikala New font")
-    })
+fn get_font() -> Option<&'static fontdue::Font> {
+    DIGIKALA_FONT
+        .get_or_init(|| {
+            let font_bytes = include_bytes!("../../src/assets/fonts/digikala.ttf");
+            fontdue::Font::from_bytes(font_bytes as &[u8], fontdue::FontSettings::default()).ok()
+        })
+        .as_ref()
 }
 
 /// Converts day number (1..=31) to Persian digits in visual left-to-right order (tens digit first).
@@ -101,34 +102,34 @@ pub fn render_day_icon(day: u32, accent: [u8; 3]) -> Image<'static> {
         }
     }
 
-    // 2. Rasterize Persian digits using fontdue
-    let font = get_font();
-    let chars = day_to_persian_digits(day);
-    let font_size = if chars.len() == 1 { 40.0f32 } else { 32.0f32 };
+    // 2. Rasterize Persian digits using fontdue if font is available
+    if let Some(font) = get_font() {
+        let chars = day_to_persian_digits(day);
+        let font_size = if chars.len() == 1 { 40.0f32 } else { 32.0f32 };
 
-    let (ascent, descent) = if let Some(lm) = font.horizontal_line_metrics(font_size) {
-        (lm.ascent, lm.descent)
-    } else {
-        (font_size * 0.8, -font_size * 0.2)
-    };
+        let (ascent, descent) = if let Some(lm) = font.horizontal_line_metrics(font_size) {
+            (lm.ascent, lm.descent)
+        } else {
+            (font_size * 0.8, -font_size * 0.2)
+        };
 
-    // Baseline calculation from horizontal_line_metrics to center vertically at 32.0
-    let baseline = 32.0 + (ascent + descent) / 2.0;
+        // Baseline calculation from horizontal_line_metrics to center vertically at 32.0
+        let baseline = 32.0 + (ascent + descent) / 2.0;
 
-    let mut rasterized = Vec::with_capacity(chars.len());
-    let mut total_advance = 0.0f32;
+        let mut rasterized = Vec::with_capacity(chars.len());
+        let mut total_advance = 0.0f32;
 
-    for &ch in &chars {
-        let (metrics, bitmap) = font.rasterize(ch, font_size);
-        total_advance += metrics.advance_width;
-        rasterized.push((metrics, bitmap));
-    }
+        for &ch in &chars {
+            let (metrics, bitmap) = font.rasterize(ch, font_size);
+            total_advance += metrics.advance_width;
+            rasterized.push((metrics, bitmap));
+        }
 
-    // Center horizontally
-    let start_x = (64.0 - total_advance) / 2.0;
+        // Center horizontally
+        let start_x = (64.0 - total_advance) / 2.0;
 
-    // 3. Alpha-blend coverage bitmap into RGBA buffer (white text, standard premultiplication)
-    let mut curr_x = start_x;
+        // 3. Alpha-blend coverage bitmap into RGBA buffer (white text, standard premultiplication)
+        let mut curr_x = start_x;
     for (metrics, bitmap) in rasterized {
         let glyph_left = (curr_x + metrics.xmin as f32).round() as i32;
         let glyph_top = (baseline - (metrics.ymin + metrics.height as i32) as f32).round() as i32;
@@ -169,6 +170,7 @@ pub fn render_day_icon(day: u32, accent: [u8; 3]) -> Image<'static> {
         }
         curr_x += metrics.advance_width;
     }
+    }
 
     Image::new_owned(rgba, 64, 64)
 }
@@ -206,6 +208,8 @@ pub fn spawn_midnight_watcher(app: AppHandle) {
     });
 }
 
+pub struct TrayState(pub tauri::tray::TrayIcon);
+
 /// Configures the native Windows system tray icon and menus.
 pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Result<(), Box<dyn std::error::Error>> {
     let (jy, jm, jd) = get_today_jalali();
@@ -225,7 +229,7 @@ pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Resul
         .items(&[&today_item, &open_main_item, &autostart_item, &quit_item])
         .build()?;
 
-    let _tray = TrayIconBuilder::with_id("taghvim_tray")
+    let mut builder = TrayIconBuilder::with_id("taghvim_tray")
         .icon(initial_icon)
         .tooltip(initial_tooltip)
         .menu(&menu)
@@ -263,7 +267,26 @@ pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Resul
             } = event
             {
                 let app = tray.app_handle();
-                if let Some(popup) = app.get_webview_window("tray-popup") {
+                let popup = if let Some(p) = app.get_webview_window("tray-popup") {
+                    Some(p)
+                } else {
+                    WebviewWindowBuilder::new(
+                        app,
+                        "tray-popup",
+                        tauri::WebviewUrl::App("index.html#/tray".into()),
+                    )
+                    .title("تقویم")
+                    .inner_size(360.0, 520.0)
+                    .resizable(false)
+                    .decorations(false)
+                    .always_on_top(true)
+                    .visible(false)
+                    .skip_taskbar(true)
+                    .build()
+                    .ok()
+                };
+
+                if let Some(popup) = popup {
                     if popup.is_visible().unwrap_or(false) {
                         let _ = popup.hide();
                     } else {
@@ -275,9 +298,25 @@ pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Resul
                     }
                 }
             }
-        })
-        .build(app)?;
+        });
 
+    let tray = match builder.build(app) {
+        Ok(t) => t,
+        Err(e) => {
+            log::warn!("Tray build with custom icon failed: {:?}, falling back to default", e);
+            if let Some(default_icon) = app.default_window_icon() {
+                TrayIconBuilder::with_id("taghvim_tray")
+                    .icon(default_icon.clone())
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .build(app)?
+            } else {
+                return Err(e.into());
+            }
+        }
+    };
+
+    app.manage(TrayState(tray));
     Ok(())
 }
 

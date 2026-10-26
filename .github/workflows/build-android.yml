@@ -263,6 +263,26 @@ jobs:
             echo "src-tauri/gen/android already present."
           fi
 
+      - name: Configure Android release ProGuard and minify rules
+        run: |
+          echo "Configuring ProGuard and release build settings to prevent R8 runtime crashes..."
+          PROGUARD_FILE="src-tauri/gen/android/app/proguard-rules.pro"
+          if [ -f "$PROGUARD_FILE" ]; then
+            cat << 'EOF' >> "$PROGUARD_FILE"
+          -keep class app.tauri.** { *; }
+          -keep class com.taghvim.** { *; }
+          -keepattributes *Annotation*
+          -dontwarn app.tauri.**
+          EOF
+          fi
+
+          if [ -f "src-tauri/gen/android/app/build.gradle.kts" ]; then
+            sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/g' src-tauri/gen/android/app/build.gradle.kts
+          fi
+          if [ -f "src-tauri/gen/android/app/build.gradle" ]; then
+            sed -i 's/minifyEnabled true/minifyEnabled false/g' src-tauri/gen/android/app/build.gradle
+          fi
+
       - name: Build and Sign Android APK
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

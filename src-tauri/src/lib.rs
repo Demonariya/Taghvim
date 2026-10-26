@@ -200,32 +200,43 @@ pub fn run() {
 
     builder
         .setup(|app| {
-            let app_data_dir = app.path().app_data_dir()?;
+            let app_data_dir = match app.path().app_data_dir() {
+                Ok(dir) => dir,
+                Err(err) => {
+                    log::warn!("Failed to resolve app_data_dir ({:?}), using fallback temp dir", err);
+                    std::env::temp_dir().join("com.taghvim.calendar")
+                }
+            };
             let notes_mgr = Arc::new(NotesManager::new(app_data_dir));
 
+            #[cfg(desktop)]
             notes_mgr.spawn_reminder_watcher(app.handle().clone());
 
             #[cfg(desktop)]
             {
-                tray_icon::setup_system_tray(app.handle(), Arc::clone(&notes_mgr))?;
-                tray_icon::refresh_tray_icon(app.handle());
-                tray_icon::spawn_midnight_watcher(app.handle().clone());
+                if let Err(e) = tray_icon::setup_system_tray(app.handle(), Arc::clone(&notes_mgr)) {
+                    log::warn!("System tray setup skipped or failed: {:?}", e);
+                } else {
+                    tray_icon::refresh_tray_icon(app.handle());
+                    tray_icon::spawn_midnight_watcher(app.handle().clone());
+                }
 
-                // Global shortcut Ctrl+Alt+J
-                let app_handle = app.handle().clone();
-                let shortcut: Shortcut = "Ctrl+Alt+J".parse().unwrap();
-                let _ = app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
-                    if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        if let Some(w) = app_handle.get_webview_window("main") {
-                            if w.is_visible().unwrap_or(false) {
-                                let _ = w.hide();
-                            } else {
-                                let _ = w.show();
-                                let _ = w.set_focus();
+                // Global shortcut Ctrl+Alt+J safely parsed
+                if let Ok(shortcut) = "Ctrl+Alt+J".parse::<Shortcut>() {
+                    let app_handle = app.handle().clone();
+                    let _ = app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
+                        if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                            if let Some(w) = app_handle.get_webview_window("main") {
+                                if w.is_visible().unwrap_or(false) {
+                                    let _ = w.hide();
+                                } else {
+                                    let _ = w.show();
+                                    let _ = w.set_focus();
+                                }
                             }
                         }
-                    }
-                });
+                    });
+                }
             }
 
             app.manage(AppState {
