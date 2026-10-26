@@ -273,7 +273,7 @@ jobs:
           # Check whether signing secrets are configured
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASS" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASS" ]; then
             echo "Production Android keystore secrets found. Building release APK..."
-            npm run tauri android build -- --apk --target aarch64 --target armv7
+            npm run tauri android build -- --apk --target aarch64 --target armv7 --ignore-version-mismatches
 
             RAW_APK=$(find src-tauri/gen/android -name "*.apk" | grep -i "release" | head -n 1)
             if [ -z "$RAW_APK" ]; then
@@ -302,7 +302,7 @@ jobs:
             echo "OUTPUT_APK=$OUTPUT_APK" >> $GITHUB_ENV
           else
             echo "No keystore secrets detected. Building installable debug-signed APK..."
-            npm run tauri android build -- --apk --debug --target aarch64 --target armv7
+            npm run tauri android build -- --apk --debug --target aarch64 --target armv7 --ignore-version-mismatches
 
             RAW_APK=$(find src-tauri/gen/android -name "*.apk" | head -n 1)
             if [ -z "$RAW_APK" ]; then

@@ -11,11 +11,11 @@ name = "taghvim_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.0.5", features = [] }
+tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
-tauri = { version = "2.2.0", features = ["image-png"] }
-tauri-plugin-notification = "2.2.1"
+tauri = { version = "2.12", features = ["image-png"] }
+tauri-plugin-notification = "2.7"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
@@ -26,10 +26,10 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 log = "0.4"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri = { version = "2.2.0", features = ["tray-icon"] }
-tauri-plugin-autostart = "2.2.0"
-tauri-plugin-global-shortcut = "2.2.0"
-tauri-plugin-single-instance = "2.2.0"
+tauri = { version = "2.12", features = ["tray-icon"] }
+tauri-plugin-autostart = "2.7"
+tauri-plugin-global-shortcut = "2.4"
+tauri-plugin-single-instance = "2.5"
 fontdue = "0.9"
 
 [profile.release]

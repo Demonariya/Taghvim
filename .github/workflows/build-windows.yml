@@ -233,7 +233,7 @@ jobs:
           releaseName: "Taghvim v${{ env.VERSION }}"
           releaseDraft: true
           tauriScript: npm run tauri
-          args: --bundles nsis
+          args: --bundles nsis --ignore-version-mismatches
 
       - name: Prepare and attach portable executable
         shell: pwsh
