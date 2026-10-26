@@ -1,8 +1,10 @@
-/**
+#![cfg(desktop)]
+
+/*
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#![cfg(desktop)]
-
+#[allow(unused_imports)]
 pub use crate::tray_icon::*;
+

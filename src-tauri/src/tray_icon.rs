@@ -1,9 +1,9 @@
-/**
+#![cfg(desktop)]
+
+/*
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-
-#![cfg(desktop)]
 
 use chrono::Timelike;
 use std::sync::{Arc, OnceLock};

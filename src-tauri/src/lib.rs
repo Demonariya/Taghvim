@@ -11,6 +11,7 @@ use tauri::WindowEvent;
 #[cfg(desktop)]
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
+#[allow(dead_code)]
 mod calendar;
 mod notes;
 mod scraper;
@@ -189,7 +190,7 @@ pub fn run() {
                 }
             }))
             .plugin(tauri_plugin_autostart::init(
-                tauri_plugin_autostart::MacConfig::None,
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 Some(vec!["--minimized"]),
             ))
             .plugin(tauri_plugin_global_shortcut::Builder::new().build());

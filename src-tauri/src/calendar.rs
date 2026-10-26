@@ -1,4 +1,6 @@
-/**
+#![allow(dead_code)]
+
+/*
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -6,6 +8,7 @@
 use chrono::{Datelike, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)]
 pub const JALALI_MONTH_NAMES: [&str; 12] = [
     "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
     "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند",
@@ -44,12 +47,14 @@ pub struct DatePart {
 }
 
 /// Check if a Jalali year is a leap year (33-year cycle).
+#[allow(dead_code)]
 pub fn is_jalali_leap_year(jy: i32) -> bool {
     let base = ((if jy > 0 { jy - 474 } else { jy - 473 }) % 2820) + 474 + 38;
     ((base * 682) % 2816) < 682
 }
 
 /// Returns days in a Jalali month (1..12).
+#[allow(dead_code)]
 pub fn get_days_in_jalali_month(jy: i32, jm: u32) -> u32 {
     match jm {
         1..=6 => 31,
@@ -207,6 +212,7 @@ pub fn to_persian_digits(value: impl std::fmt::Display) -> String {
 }
 
 /// Formats full Persian date: "یکشنبه، ۵ آبان ۱۴۰۵"
+#[allow(dead_code)]
 pub fn format_full_persian_date(jy: i32, jm: u32, jd: u32) -> String {
     let dow = get_persian_day_of_week(jy, jm, jd);
     let day_name = PERSIAN_WEEK_DAYS[dow];
@@ -221,6 +227,7 @@ pub fn format_full_persian_date(jy: i32, jm: u32, jd: u32) -> String {
 }
 
 /// Returns today's Jalali date from local system clock.
+#[allow(dead_code)]
 pub fn get_today_jalali() -> (i32, u32, u32) {
     let now = Local::now();
     gregorian_to_jalali(now.year(), now.month(), now.day())
