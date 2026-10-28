@@ -39,11 +39,11 @@ async fn get_month_events(
     month: u32,
     force_refresh: Option<bool>,
 ) -> Result<MonthEventsResult, String> {
-    let cache_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("events_cache");
+    let cache_dir = match app.path().app_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => std::env::temp_dir().join("com.taghvim.calendar"),
+    }
+    .join("events_cache");
 
     let result = fetch_month_events_with_cache(
         cache_dir,
@@ -183,12 +183,6 @@ pub fn run() {
     #[cfg(desktop)]
     {
         builder = builder
-            .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }))
             .plugin(tauri_plugin_autostart::init(
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 Some(vec!["--minimized"]),

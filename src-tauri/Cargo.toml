@@ -29,7 +29,6 @@ log = "0.4"
 tauri = { version = "2.12", features = ["tray-icon"] }
 tauri-plugin-autostart = "2.7"
 tauri-plugin-global-shortcut = "2.4"
-tauri-plugin-single-instance = "2.5"
 fontdue = "0.9"
 
 [profile.release]

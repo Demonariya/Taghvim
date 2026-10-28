@@ -302,7 +302,7 @@ pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Resul
         });
 
     let tray = match builder.build(app) {
-        Ok(t) => t,
+        Ok(t) => Some(t),
         Err(e) => {
             log::warn!("Tray build with custom icon failed: {:?}, falling back to default", e);
             if let Some(default_icon) = app.default_window_icon() {
@@ -310,14 +310,17 @@ pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Resul
                     .icon(default_icon.clone())
                     .menu(&menu)
                     .show_menu_on_left_click(false)
-                    .build(app)?
+                    .build(app)
+                    .ok()
             } else {
-                return Err(e.into());
+                None
             }
         }
     };
 
-    app.manage(TrayState(tray));
+    if let Some(t) = tray {
+        app.manage(TrayState(t));
+    }
     Ok(())
 }
 
