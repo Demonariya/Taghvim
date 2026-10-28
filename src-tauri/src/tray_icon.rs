@@ -208,6 +208,7 @@ pub fn spawn_midnight_watcher(app: AppHandle) {
     });
 }
 
+#[allow(dead_code)]
 pub struct TrayState(pub tauri::tray::TrayIcon);
 
 /// Configures the native Windows system tray icon and menus.
@@ -229,7 +230,7 @@ pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Resul
         .items(&[&today_item, &open_main_item, &autostart_item, &quit_item])
         .build()?;
 
-    let mut builder = TrayIconBuilder::with_id("taghvim_tray")
+    let builder = TrayIconBuilder::with_id("taghvim_tray")
         .icon(initial_icon)
         .tooltip(initial_tooltip)
         .menu(&menu)

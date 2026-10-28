@@ -135,6 +135,7 @@ impl NotesManager {
     }
 
     /// Spawns background worker checking reminders every 30 seconds and sending Windows notifications.
+    #[allow(dead_code)]
     pub fn spawn_reminder_watcher(&self, app_handle: AppHandle) {
         let notes_arc = Arc::clone(&self.notes);
         let settings_arc = Arc::clone(&self.settings);
