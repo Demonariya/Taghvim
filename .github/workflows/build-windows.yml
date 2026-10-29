@@ -202,6 +202,9 @@ jobs:
             exit 1
           }
 
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+
       - name: Frontend build check
         run: npm run build
 
@@ -232,6 +235,10 @@ jobs:
           tagName: ${{ env.TAG }}
           releaseName: "Taghvim v${{ env.VERSION }}"
           releaseDraft: true
+          releaseBody: |
+            برای اجرای نسخه پرتابل، Microsoft WebView2 Runtime الزامی است؛ در صورت عدم اجرا از فایل نصبی (Installer) استفاده کنید.
+
+            Portable build needs Microsoft WebView2 Runtime; use the installer if the app does not open.
           tauriScript: npm run tauri
           args: --bundles nsis --ignore-version-mismatches
 

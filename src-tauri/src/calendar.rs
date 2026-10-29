@@ -1,6 +1,4 @@
-#![allow(dead_code)]
-
-/*
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -8,7 +6,7 @@
 use chrono::{Datelike, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 
-#[allow(dead_code)]
+#[cfg(desktop)]
 pub const JALALI_MONTH_NAMES: [&str; 12] = [
     "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
     "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند",
@@ -44,24 +42,6 @@ pub struct DatePart {
     pub month: u32,
     pub day: u32,
     pub formatted: String,
-}
-
-/// Check if a Jalali year is a leap year (33-year cycle).
-#[allow(dead_code)]
-pub fn is_jalali_leap_year(jy: i32) -> bool {
-    let base = ((if jy > 0 { jy - 474 } else { jy - 473 }) % 2820) + 474 + 38;
-    ((base * 682) % 2816) < 682
-}
-
-/// Returns days in a Jalali month (1..12).
-#[allow(dead_code)]
-pub fn get_days_in_jalali_month(jy: i32, jm: u32) -> u32 {
-    match jm {
-        1..=6 => 31,
-        7..=11 => 30,
-        12 => if is_jalali_leap_year(jy) { 30 } else { 29 },
-        _ => 30,
-    }
 }
 
 /// Converts Gregorian to Jalali (Solar Hijri).
@@ -149,6 +129,20 @@ pub fn gregorian_to_jdn(gy: i32, gm: u32, gd: u32) -> i64 {
     (gd as i64) + ((153 * m + 2) / 5) + 365 * y + (y / 4) - (y / 100) + (y / 400) - 32045
 }
 
+/// Converts Julian Day Number to Gregorian.
+pub fn jdn_to_gregorian(jdn: i64) -> (i32, u32, u32) {
+    let a = jdn + 32044;
+    let b = (4 * a + 3) / 146097;
+    let c = a - (146097 * b) / 4;
+    let d = (4 * c + 3) / 1461;
+    let e = c - (1461 * d) / 4;
+    let m = (5 * e + 2) / 153;
+    let day = e - (153 * m + 2) / 5 + 1;
+    let month = m + 3 - 12 * (m / 10);
+    let year = 100 * b + d - 4800 + (m / 10);
+    (year as i32, month as u32, day as u32)
+}
+
 /// Converts Julian Day Number to Lunar Hijri (Islamic tabular).
 pub fn jdn_to_hijri(jdn: i64) -> (i32, u32, u32) {
     let mut l = jdn - 1948440 + 10632;
@@ -169,13 +163,31 @@ pub fn jalali_to_hijri(jy: i32, jm: u32, jd: u32) -> (i32, u32, u32) {
     jdn_to_hijri(jdn)
 }
 
+/// Converts Lunar Hijri to Julian Day Number (JDN).
+pub fn hijri_to_jdn(hy: i32, hm: u32, hd: u32) -> i64 {
+    let y = hy as i64;
+    let m = hm as i64;
+    let d = hd as i64;
+    d + ((m - 1) * 59 + 1) / 2 + (y - 1) * 354 + (11 * y + 3) / 30 + 1948439
+}
+
+/// Converts Lunar Hijri to Gregorian.
+pub fn hijri_to_gregorian(hy: i32, hm: u32, hd: u32) -> (i32, u32, u32) {
+    let jdn = hijri_to_jdn(hy, hm, hd);
+    jdn_to_gregorian(jdn)
+}
+
+/// Converts Lunar Hijri to Jalali.
+pub fn hijri_to_jalali(hy: i32, hm: u32, hd: u32) -> (i32, u32, u32) {
+    let (gy, gm, gd) = hijri_to_gregorian(hy, hm, hd);
+    gregorian_to_jalali(gy, gm, gd)
+}
+
 /// Returns Persian day of week (0: شنبه, ..., 6: جمعه).
 pub fn get_persian_day_of_week(jy: i32, jm: u32, jd: u32) -> usize {
     let (gy, gm, gd) = jalali_to_gregorian(jy, jm, jd);
     if let Some(date) = NaiveDate::from_ymd_opt(gy, gm, gd) {
-        // Chrono: Monday is 0, Sunday is 6
-        // We want: Saturday: 0, Sunday: 1, Monday: 2, Tuesday: 3, Wednesday: 4, Thursday: 5, Friday: 6
-        let chrono_dow = date.weekday().num_days_from_monday(); // 0..6
+        let chrono_dow = date.weekday().num_days_from_monday();
         match chrono_dow {
             0 => 2, // دوشنبه
             1 => 3, // سه‌شنبه
@@ -212,7 +224,7 @@ pub fn to_persian_digits(value: impl std::fmt::Display) -> String {
 }
 
 /// Formats full Persian date: "یکشنبه، ۵ آبان ۱۴۰۵"
-#[allow(dead_code)]
+#[cfg(desktop)]
 pub fn format_full_persian_date(jy: i32, jm: u32, jd: u32) -> String {
     let dow = get_persian_day_of_week(jy, jm, jd);
     let day_name = PERSIAN_WEEK_DAYS[dow];
@@ -227,7 +239,7 @@ pub fn format_full_persian_date(jy: i32, jm: u32, jd: u32) -> String {
 }
 
 /// Returns today's Jalali date from local system clock.
-#[allow(dead_code)]
+#[cfg(desktop)]
 pub fn get_today_jalali() -> (i32, u32, u32) {
     let now = Local::now();
     gregorian_to_jalali(now.year(), now.month(), now.day())
@@ -344,4 +356,22 @@ pub fn get_standard_fallback_holidays(year: i32, month: u32) -> Vec<TimeIrEvent>
     }
 
     events
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hijri_conversion_3_aban_1405() {
+        // 13 Jumada al-Awwal 1448 = 3 Aban 1405 = 2026-10-25
+        let (gy, gm, gd) = hijri_to_gregorian(1448, 5, 13);
+        assert_eq!((gy, gm, gd), (2026, 10, 25));
+
+        let (jy, jm, jd) = hijri_to_jalali(1448, 5, 13);
+        assert_eq!((jy, jm, jd), (1405, 8, 3));
+
+        let (hy, hm, hd) = jalali_to_hijri(1405, 8, 3);
+        assert_eq!((hy, hm, hd), (1448, 5, 13));
+    }
 }

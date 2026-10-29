@@ -9,6 +9,7 @@
     "core:event:default",
     "core:event:allow-listen",
     "core:event:allow-emit",
-    "notification:default"
+    "notification:default",
+    "log:default"
   ]
 }

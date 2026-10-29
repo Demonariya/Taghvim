@@ -11,18 +11,15 @@ use tauri::WindowEvent;
 #[cfg(desktop)]
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
-#[allow(dead_code)]
 mod calendar;
 mod notes;
 mod scraper;
 
 #[cfg(desktop)]
-mod tray;
-#[cfg(desktop)]
 mod tray_icon;
 
 use calendar::{
-    gregorian_to_jalali, jalali_to_gregorian, jalali_to_hijri,
+    gregorian_to_jalali, hijri_to_jalali, jalali_to_gregorian, jalali_to_hijri,
     to_persian_digits, DateConversionResponse, DatePart, PERSIAN_WEEK_DAYS,
 };
 use notes::{AppSettings, NotesManager, PersonalNote};
@@ -91,10 +88,7 @@ fn convert_date(
 ) -> Result<DateConversionResponse, String> {
     let (jy, jm, jd) = match source_type.as_str() {
         "gregorian" => gregorian_to_jalali(year, month, day),
-        "hijri" => {
-            let (gy, gm, gd) = jalali_to_gregorian(1400, 1, 1);
-            gregorian_to_jalali(gy, gm, gd)
-        }
+        "hijri" => hijri_to_jalali(year, month, day),
         _ => (year, month, day),
     };
 
@@ -171,15 +165,64 @@ fn open_main_window(app: AppHandle) -> Result<(), String> {
 
 #[cfg(desktop)]
 #[tauri::command]
-fn close_app() -> Result<(), String> {
+fn close_app() {
     std::process::exit(0);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    #[allow(unused_mut)]
+    // Set panic hook to log fatal errors with timestamp to both temp dir and app data dir
+    std::panic::set_hook(Box::new(|info| {
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Unknown panic payload".to_string()
+        };
+
+        let location = if let Some(loc) = info.location() {
+            format!("{}:{}:{}", loc.file(), loc.line(), loc.column())
+        } else {
+            "unknown location".to_string()
+        };
+
+        let timestamp = chrono::Local::now().to_rfc3339();
+        let report = format!(
+            "[{}] Taghvim fatal crash:\nPayload: {}\nLocation: {}\n",
+            timestamp, payload, location
+        );
+        eprintln!("{}", report);
+
+        // 1. Write to system temp directory
+        let temp_log = std::env::temp_dir().join("taghvim_crash.log");
+        let _ = std::fs::write(&temp_log, &report);
+
+        // 2. Write to persistent app data dir if available
+        #[cfg(desktop)]
+        {
+            if let Some(app_data) = std::env::var_os("APPDATA") {
+                let app_dir = std::path::PathBuf::from(app_data).join("com.taghvim.calendar");
+                let _ = std::fs::create_dir_all(&app_dir);
+                let _ = std::fs::write(app_dir.join("crash.log"), &report);
+            }
+        }
+    }));
+
     let mut builder = tauri::Builder::default();
 
+    // 1. Initialize tauri-plugin-log FIRST so log output & panics route properly on all platforms
+    builder = builder.plugin(
+        tauri_plugin_log::Builder::new()
+            .targets([
+                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
+                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+            ])
+            .build(),
+    );
+
+    // 2. Desktop-specific plugins
     #[cfg(desktop)]
     {
         builder = builder
@@ -190,6 +233,7 @@ pub fn run() {
             .plugin(tauri_plugin_global_shortcut::Builder::new().build());
     }
 
+    // 3. Notification plugin (all platforms)
     builder = builder.plugin(tauri_plugin_notification::init());
 
     builder

@@ -189,7 +189,7 @@ pub fn refresh_tray_icon(app: &AppHandle) {
 
 /// Spawns a background task that sleeps until local midnight and updates the tray icon.
 pub fn spawn_midnight_watcher(app: AppHandle) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let mut last_day = get_today_jalali().2;
         loop {
             let now = chrono::Local::now();
@@ -207,9 +207,6 @@ pub fn spawn_midnight_watcher(app: AppHandle) {
         }
     });
 }
-
-#[allow(dead_code)]
-pub struct TrayState(pub tauri::tray::TrayIcon);
 
 /// Configures the native Windows system tray icon and menus.
 pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Result<(), Box<dyn std::error::Error>> {
@@ -318,9 +315,7 @@ pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Resul
         }
     };
 
-    if let Some(t) = tray {
-        app.manage(TrayState(t));
-    }
+    let _ = tray;
     Ok(())
 }
 

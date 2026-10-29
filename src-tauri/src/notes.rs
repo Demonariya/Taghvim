@@ -92,11 +92,11 @@ impl NotesManager {
     }
 
     pub fn get_notes(&self) -> Vec<PersonalNote> {
-        self.notes.lock().unwrap().clone()
+        self.notes.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn save_note(&self, note: PersonalNote) -> Vec<PersonalNote> {
-        let mut list = self.notes.lock().unwrap();
+        let mut list = self.notes.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(pos) = list.iter().position(|n| n.id == note.id) {
             list[pos] = note;
         } else {
@@ -111,7 +111,7 @@ impl NotesManager {
     }
 
     pub fn delete_note(&self, id: &str) -> Vec<PersonalNote> {
-        let mut list = self.notes.lock().unwrap();
+        let mut list = self.notes.lock().unwrap_or_else(|e| e.into_inner());
         list.retain(|n| n.id != id);
 
         if let Ok(data) = serde_json::to_string_pretty(&*list) {
@@ -122,11 +122,11 @@ impl NotesManager {
     }
 
     pub fn get_settings(&self) -> AppSettings {
-        self.settings.lock().unwrap().clone()
+        self.settings.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn save_settings(&self, settings: AppSettings) {
-        let mut curr = self.settings.lock().unwrap();
+        let mut curr = self.settings.lock().unwrap_or_else(|e| e.into_inner());
         *curr = settings.clone();
 
         if let Ok(data) = serde_json::to_string_pretty(&settings) {
@@ -135,12 +135,12 @@ impl NotesManager {
     }
 
     /// Spawns background worker checking reminders every 30 seconds and sending Windows notifications.
-    #[allow(dead_code)]
+    #[cfg(desktop)]
     pub fn spawn_reminder_watcher(&self, app_handle: AppHandle) {
         let notes_arc = Arc::clone(&self.notes);
         let settings_arc = Arc::clone(&self.settings);
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let mut last_notified_minute = 999;
 
             loop {
@@ -154,7 +154,7 @@ impl NotesManager {
                 }
 
                 let notifications_enabled = {
-                    let s = settings_arc.lock().unwrap();
+                    let s = settings_arc.lock().unwrap_or_else(|e| e.into_inner());
                     s.enable_notifications
                 };
 
@@ -166,7 +166,7 @@ impl NotesManager {
                 let (jy, jm, jd) = gregorian_to_jalali(now.year(), now.month(), now.day());
 
                 let notes_to_notify: Vec<PersonalNote> = {
-                    let list = notes_arc.lock().unwrap();
+                    let list = notes_arc.lock().unwrap_or_else(|e| e.into_inner());
                     list.iter()
                         .filter(|n| {
                             n.has_reminder
