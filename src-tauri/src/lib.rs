@@ -212,13 +212,21 @@ pub fn run() {
     let mut builder = tauri::Builder::default();
 
     // 1. Initialize tauri-plugin-log FIRST so log output & panics route properly on all platforms
+    #[cfg(desktop)]
+    let log_targets = [
+        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
+        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+    ];
+    #[cfg(not(desktop))]
+    let log_targets = [
+        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+    ];
+
     builder = builder.plugin(
         tauri_plugin_log::Builder::new()
-            .targets([
-                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
-                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
-            ])
+            .targets(log_targets)
             .build(),
     );
 

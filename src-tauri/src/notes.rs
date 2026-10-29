@@ -6,11 +6,15 @@
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use chrono::{Datelike, Local, Timelike};
 use serde::{Deserialize, Serialize};
-use tauri::AppHandle;
-use tauri_plugin_notification::NotificationExt;
 
+#[cfg(desktop)]
+use chrono::{Datelike, Local, Timelike};
+#[cfg(desktop)]
+use tauri::AppHandle;
+#[cfg(desktop)]
+use tauri_plugin_notification::NotificationExt;
+#[cfg(desktop)]
 use crate::calendar::gregorian_to_jalali;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

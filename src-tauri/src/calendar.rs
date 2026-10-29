@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#[cfg(desktop)]
 use chrono::{Datelike, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 
@@ -356,6 +357,11 @@ pub fn get_standard_fallback_holidays(year: i32, month: u32) -> Vec<TimeIrEvent>
     }
 
     events
+}
+
+/// Alias for get_offline_fallback_events used by scraper.rs.
+pub fn get_standard_fallback_holidays(year: i32, month: u32) -> Vec<TimeIrEvent> {
+    get_offline_fallback_events(year, month)
 }
 
 #[cfg(test)]

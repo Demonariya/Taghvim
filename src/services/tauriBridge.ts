@@ -15,6 +15,7 @@ import {
   gregorianToJalali,
   jalaliToGregorian,
   jalaliToHijri,
+  hijriToJalali,
   getPersianDayOfWeek,
   getDaysInJalaliMonth,
   PERSIAN_WEEK_DAYS,
@@ -442,11 +443,7 @@ export function convertDateThreeWay(
   if (sourceType === 'gregorian') {
     [jy, jm, jd] = gregorianToJalali(year, month, day);
   } else if (sourceType === 'hijri') {
-    const [gy, gm, gd] = jalaliToGregorian(1400, 1, 1);
-    const result = gregorianToJalali(gy, gm, gd);
-    jy = result[0];
-    jm = result[1];
-    jd = result[2];
+    [jy, jm, jd] = hijriToJalali(year, month, day);
   }
 
   const [gy, gm, gd] = jalaliToGregorian(jy, jm, jd);

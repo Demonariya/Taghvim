@@ -3,7 +3,7 @@
   "identifier": "mobile",
   "description": "Mobile capability for Taghvim Android",
   "platforms": ["android"],
-  "windows": ["main"],
+  "windows": ["main", "*"],
   "permissions": [
     "core:default",
     "core:event:default",
