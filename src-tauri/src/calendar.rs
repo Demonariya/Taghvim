@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+use chrono::NaiveDate;
 #[cfg(desktop)]
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 
 #[cfg(desktop)]
@@ -242,6 +243,7 @@ pub fn format_full_persian_date(jy: i32, jm: u32, jd: u32) -> String {
 /// Returns today's Jalali date from local system clock.
 #[cfg(desktop)]
 pub fn get_today_jalali() -> (i32, u32, u32) {
+    use chrono::Local;
     let now = Local::now();
     gregorian_to_jalali(now.year(), now.month(), now.day())
 }
@@ -357,11 +359,6 @@ pub fn get_standard_fallback_holidays(year: i32, month: u32) -> Vec<TimeIrEvent>
     }
 
     events
-}
-
-/// Alias for get_offline_fallback_events used by scraper.rs.
-pub fn get_standard_fallback_holidays(year: i32, month: u32) -> Vec<TimeIrEvent> {
-    get_offline_fallback_events(year, month)
 }
 
 #[cfg(test)]

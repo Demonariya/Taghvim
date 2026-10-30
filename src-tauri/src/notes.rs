@@ -8,15 +8,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
-#[cfg(desktop)]
-use chrono::{Datelike, Local, Timelike};
-#[cfg(desktop)]
-use tauri::AppHandle;
-#[cfg(desktop)]
-use tauri_plugin_notification::NotificationExt;
-#[cfg(desktop)]
-use crate::calendar::gregorian_to_jalali;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersonalNote {
     pub id: String,
@@ -137,10 +128,16 @@ impl NotesManager {
             let _ = fs::write(&self.settings_path, data);
         }
     }
+}
 
+#[cfg(desktop)]
+impl NotesManager {
     /// Spawns background worker checking reminders every 30 seconds and sending Windows notifications.
-    #[cfg(desktop)]
-    pub fn spawn_reminder_watcher(&self, app_handle: AppHandle) {
+    pub fn spawn_reminder_watcher(&self, app_handle: tauri::AppHandle) {
+        use chrono::{Datelike, Local, Timelike};
+        use tauri_plugin_notification::NotificationExt;
+        use crate::calendar::gregorian_to_jalali;
+
         let notes_arc = Arc::clone(&self.notes);
         let settings_arc = Arc::clone(&self.settings);
 

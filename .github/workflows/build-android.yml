@@ -4,7 +4,7 @@
 # 1. Master icon is authored under src-tauri/icons/icon.png and Android adaptive layers are in src-tauri/icons/android/.
 # 2. When CI runs `tauri android init --ci`, the Android project template is generated in src-tauri/gen/android.
 # 3. An explicit sync step copies src-tauri/icons/android/* into src-tauri/gen/android/app/src/main/res/.
-# 4. Post-build verification invokes scripts/verify-apk-icon.mjs to perform deterministic, format-aware verification of the packaged icon.
+# 4. Post-build verification performs deterministic, pixel-level Pillow verification of packaged launcher assets.
 
 name: Build Android
 
@@ -147,7 +147,7 @@ jobs:
           fi
 
       - name: Setup Java 17 (Temurin)
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -162,6 +162,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+          components: clippy
 
       - name: Setup Android SDK components and licenses
         run: |
@@ -251,6 +252,9 @@ jobs:
 
       - name: Frontend build check
         run: npm run build
+
+      - name: Run Android Clippy check
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --target aarch64-linux-android --lib -- -D warnings
 
       - name: Extract Taghvim version
         run: |
@@ -368,6 +372,7 @@ jobs:
           echo "=== Starting Comprehensive APK Verification ==="
           BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME/build-tools/"* | sort -V | tail -n 1)
           AAPT="$BUILD_TOOLS_DIR/aapt"
+          AAPT2="$BUILD_TOOLS_DIR/aapt2"
           ZIPALIGN="$BUILD_TOOLS_DIR/zipalign"
           APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
 
@@ -387,20 +392,102 @@ jobs:
             echo "Verified ABI: $ABI -> lib/$ABI/libtaghvim_lib.so present"
           done
 
-          # 2. Comprehensive launcher icon and badging verification via scripts/verify-apk-icon.mjs
-          echo "--- 2. Verifying Launcher Icon & Manifest Metadata ---"
-          node scripts/verify-apk-icon.mjs "$OUTPUT_APK" "$AAPT"
+          # 2. Check package name and permissions from badging
+          echo "--- 2. Checking Package Name and Permissions ---"
+          "$AAPT" dump badging "$OUTPUT_APK" | grep "package: name='com.taghvim.calendar'" || { echo "::error::Package name mismatch"; exit 1; }
+          "$AAPT" dump badging "$OUTPUT_APK" | grep "android.permission.INTERNET" || { echo "::error::Missing INTERNET permission"; exit 1; }
+          echo "Verified: Package name and INTERNET permission present."
 
-          # 3. Check zipalign 4-byte alignment
-          echo "--- 3. Checking ZipAlign ---"
+          # 3. Verifying launcher icon badging, XML tree and pixel matching
+          echo "--- 3. Verifying Launcher Icons (aapt2 & Pillow pixel comparison) ---"
+          "$AAPT" dump badging "$OUTPUT_APK" | grep -E "application-icon|icon=" || true
+          ICON_PATH=$("$AAPT" dump badging "$OUTPUT_APK" | grep "application:" | sed -n "s/.*icon='\([^']*\)'.*/\1/p")
+          echo "Declared icon path: $ICON_PATH"
+          if [ -n "$ICON_PATH" ] && [ -x "$AAPT2" ]; then
+            echo "Dumping XML tree for $ICON_PATH:"
+            "$AAPT2" dump xmltree --file "$ICON_PATH" "$OUTPUT_APK" || true
+          fi
+
+          python3 -m pip install --user pillow
+
+          python3 - << 'PYEOF'
+          import os
+          import sys
+          import tempfile
+          from PIL import Image, ImageChops
+
+          apk_path = os.environ.get("OUTPUT_APK")
+          if not apk_path or not os.path.isfile(apk_path):
+              print(f"::error::Target APK not found at: {apk_path}")
+              sys.exit(1)
+
+          repo_icons_dir = "src-tauri/icons/android"
+          if not os.path.isdir(repo_icons_dir):
+              print(f"::error::Repo icon directory not found: {repo_icons_dir}")
+              sys.exit(1)
+
+          repo_icons = []
+          for root, _, files in os.walk(repo_icons_dir):
+              for f in files:
+                  if f.endswith(".png"):
+                      p = os.path.join(root, f)
+                      repo_icons.append((f, p, Image.open(p).convert("RGBA")))
+
+          print(f"Loaded {len(repo_icons)} reference icons from {repo_icons_dir}.")
+
+          matched_foreground = 0
+          matched_launcher = 0
+
+          with tempfile.TemporaryDirectory() as tmpdir:
+              os.system(f'unzip -q "{apk_path}" -d "{tmpdir}"')
+              apk_png_paths = []
+              for root, _, files in os.walk(tmpdir):
+                  for f in files:
+                      if f.endswith(".png"):
+                          apk_png_paths.append(os.path.join(root, f))
+
+              print(f"Extracted {len(apk_png_paths)} PNG images from APK.")
+
+              for apk_png in apk_png_paths:
+                  try:
+                      apk_img = Image.open(apk_png).convert("RGBA")
+                  except Exception:
+                      continue
+
+                  for ref_name, ref_path, ref_img in repo_icons:
+                      if apk_img.size == ref_img.size:
+                          diff = ImageChops.difference(apk_img, ref_img)
+                          if diff.getbbox() is None:
+                              rel_apk = os.path.relpath(apk_png, tmpdir)
+                              print(f"Pixel match: APK '{rel_apk}' matches repo '{ref_path}' ({ref_img.size[0]}x{ref_img.size[1]})")
+                              if "ic_launcher_foreground" in ref_name:
+                                  matched_foreground += 1
+                              if "ic_launcher.png" in ref_name or "ic_launcher_round.png" in ref_name:
+                                  matched_launcher += 1
+
+          print(f"Pixel match summary: foreground={matched_foreground}, launcher/round={matched_launcher}")
+
+          if matched_foreground == 0:
+              print("::error::Verification failed: At least one ic_launcher_foreground pixel match is required!")
+              sys.exit(1)
+
+          if matched_launcher == 0:
+              print("::error::Verification failed: At least one ic_launcher.png pixel match is required!")
+              sys.exit(1)
+
+          print("Launcher icon verification passed: APK contains authentic launcher icons matching repository originals.")
+          PYEOF
+
+          # 4. Check zipalign 4-byte alignment
+          echo "--- 4. Checking ZipAlign ---"
           if ! "$ZIPALIGN" -c -v 4 "$OUTPUT_APK"; then
             echo "::error::Verification failed: APK is not properly 4-byte aligned (zipalign failed)"
             exit 1
           fi
           echo "Verified: ZipAlign check passed."
 
-          # 4. Check apksigner verification
-          echo "--- 4. Checking APK Signature ---"
+          # 5. Check apksigner verification
+          echo "--- 5. Checking APK Signature ---"
           if ! "$APKSIGNER" verify --verbose "$OUTPUT_APK"; then
             echo "::error::Verification failed: apksigner verification failed for $OUTPUT_APK"
             exit 1
