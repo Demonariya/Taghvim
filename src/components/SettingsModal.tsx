@@ -3,16 +3,12 @@ import {
   X,
   Settings,
   RefreshCw,
-  Power,
   Calendar,
   Eye,
   Bell,
-  Keyboard,
-  Info,
 } from 'lucide-react';
-import { AppSettings } from '../types/calendar.ts';
-import { toFa } from '../utils/persianDate.ts';
-import { isAndroid } from '../platform.ts';
+import { AppSettings } from '../shared/types/calendar.ts';
+import { toFa } from '../shared/utils/persianDate.ts';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -21,6 +17,10 @@ interface SettingsModalProps {
   onUpdateSettings: (newSettings: AppSettings) => void;
   onRefreshCache: () => Promise<void>;
   isOffline: boolean;
+  platformLabel: string;
+  notificationTitle: string;
+  notificationSubtitle: string;
+  platformSection?: React.ReactNode;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -30,6 +30,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateSettings,
   onRefreshCache,
   isOffline,
+  platformLabel,
+  notificationTitle,
+  notificationSubtitle,
+  platformSection,
 }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState('');
@@ -51,16 +55,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div
-      className={`fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/70 select-none ${
-        isAndroid ? 'dialog-overlay' : ''
-      }`}
-    >
-      <div
-        className={`relative w-full max-w-[360px] bg-[#14171f] border border-[#232834] rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[85vh] ${
-          isAndroid ? 'dialog-sheet' : ''
-        }`}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/70 select-none dialog-overlay">
+      <div className="relative w-full max-w-[360px] bg-[#14171f] border border-[#232834] rounded-xl shadow-xl overflow-hidden flex flex-col max-h-[85vh] dialog-sheet">
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b border-[#232834] bg-[#0d0f14] shrink-0">
           <div className="flex items-center gap-2">
@@ -80,7 +76,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        {/* Scrollable Body: NEVER cut off */}
+        {/* Scrollable Body */}
         <div className="p-3 overflow-y-auto flex-1 space-y-3 text-xs">
           {/* Status and time.ir Cache */}
           <div className="p-2.5 rounded-lg bg-[#0d0f14] border border-[#232834] space-y-2">
@@ -125,35 +121,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <p className="text-[10px] text-emerald-400 text-center">{refreshMsg}</p>
             )}
           </div>
-
-          {/* Autostart Toggle - Desktop Only */}
-          {!isAndroid && (
-            <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#0d0f14] border border-[#232834]">
-              <div className="flex items-center gap-2">
-                <Power className="w-3.5 h-3.5 text-[#22d3ee]" />
-                <div>
-                  <span className="text-xs text-[#e6e9ef] block">
-                    شروع خودکار با ویندوز
-                  </span>
-                  <span className="text-[10px] text-[#8b93a5]">
-                    اجرای نرم‌افزار در سینی سیستم هنگام شروع
-                  </span>
-                </div>
-              </div>
-
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={settings.autostart}
-                  onChange={(e) =>
-                    onUpdateSettings({ ...settings, autostart: e.target.checked })
-                  }
-                  className="sr-only peer"
-                />
-                <div className="w-9 h-5 bg-[#232834] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#22d3ee]"></div>
-              </label>
-            </div>
-          )}
 
           {/* First day of week */}
           <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#0d0f14] border border-[#232834]">
@@ -219,14 +186,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="flex items-center gap-2">
               <Bell className="w-3.5 h-3.5 text-[#22d3ee]" />
               <div>
-                <span className="text-xs text-[#e6e9ef] block">
-                  {isAndroid ? 'اعلان‌ها و یادآورها' : 'اعلان‌های بومی ویندوز'}
-                </span>
-                <span className="text-[10px] text-[#8b93a5]">
-                  {isAndroid
-                    ? 'ارسال اعلان یادآوری رویدادها و یادداشت‌ها'
-                    : 'ارسال اعلان حتی هنگام پنهان بودن پنجره'}
-                </span>
+                <span className="text-xs text-[#e6e9ef] block">{notificationTitle}</span>
+                <span className="text-[10px] text-[#8b93a5]">{notificationSubtitle}</span>
               </div>
             </div>
 
@@ -246,32 +207,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </label>
           </div>
 
-          {/* Android-specific Notification & Alarm Note */}
-          {isAndroid && (
-            <div className="p-2.5 rounded-lg bg-[#0d0f14] border border-[#232834] flex items-start gap-2">
-              <Info className="w-3.5 h-3.5 text-[#22d3ee] shrink-0 mt-0.5" />
-              <p className="text-[10px] text-[#8b93a5] leading-relaxed">
-                در اندروید، برای دریافت دقیق اعلان‌ها در زمان مشخص‌شده، دسترسی اعلان‌ها (POST_NOTIFICATIONS) را تأیید کرده و در تنظیمات دستگاه، بهینه‌سازی باتری (Battery Saver) را برای تقویم غیرفعال کنید.
-              </p>
-            </div>
-          )}
-
-          {/* Shortcut info - Desktop Only */}
-          {!isAndroid && (
-            <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#0d0f14] border border-[#232834]">
-              <div className="flex items-center gap-1.5">
-                <Keyboard className="w-3.5 h-3.5 text-[#8b93a5]" />
-                <span className="text-[11px] text-[#8b93a5]">میانبر باز/بستن برنامه:</span>
-              </div>
-              <span className="px-2 py-0.5 rounded bg-[#14171f] border border-[#232834] text-[#22d3ee] text-[11px] font-mono-num">
-                {settings.globalShortcut}
-              </span>
-            </div>
-          )}
+          {/* Platform-specific settings section (Android or Windows) */}
+          {platformSection}
 
           {/* App Info footer */}
           <div className="text-center pt-1 text-[10px] text-[#8b93a5]">
-            Taghvim {isAndroid ? 'Android' : 'Desktop'} • نسخه {toFa('0.0.1')}
+            Taghvim {platformLabel} • نسخه {toFa('0.0.1')}
           </div>
         </div>
       </div>

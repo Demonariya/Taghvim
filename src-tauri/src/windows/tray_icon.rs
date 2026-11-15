@@ -1,11 +1,9 @@
-#![cfg(desktop)]
-
 /*
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-use chrono::Timelike;
+use chrono::{Datelike, Local, Timelike};
 use std::sync::{Arc, OnceLock};
 use tauri::{
     image::Image,
@@ -14,17 +12,43 @@ use tauri::{
     AppHandle, Manager, PhysicalPosition, WebviewWindowBuilder,
 };
 
-use crate::calendar::{format_full_persian_date, get_today_jalali};
-use crate::notes::NotesManager;
+use crate::shared::calendar::{
+    get_persian_day_of_week, gregorian_to_jalali, to_persian_digits, PERSIAN_WEEK_DAYS,
+};
+use crate::shared::notes::NotesManager;
+
+const JALALI_MONTH_NAMES: [&str; 12] = [
+    "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+    "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند",
+];
 
 static DIGIKALA_FONT: OnceLock<Option<fontdue::Font>> = OnceLock::new();
 
+fn format_full_persian_date(jy: i32, jm: u32, jd: u32) -> String {
+    let dow = get_persian_day_of_week(jy, jm, jd);
+    let day_name = PERSIAN_WEEK_DAYS[dow];
+    let month_name = JALALI_MONTH_NAMES
+        .get((jm.saturating_sub(1)) as usize)
+        .unwrap_or(&"");
+    format!(
+        "{}، {} {} {}",
+        day_name,
+        to_persian_digits(jd),
+        month_name,
+        to_persian_digits(jy)
+    )
+}
+
+fn get_today_jalali() -> (i32, u32, u32) {
+    let now = Local::now();
+    gregorian_to_jalali(now.year(), now.month(), now.day())
+}
+
 /// Returns the embedded "Digikala New" font loaded from `src/assets/fonts/digikala.ttf`.
-/// Never loads any system font.
 fn get_font() -> Option<&'static fontdue::Font> {
     DIGIKALA_FONT
         .get_or_init(|| {
-            let font_bytes = include_bytes!("../../src/assets/fonts/digikala.ttf");
+            let font_bytes = include_bytes!("../../../src/assets/fonts/digikala.ttf");
             fontdue::Font::from_bytes(font_bytes as &[u8], fontdue::FontSettings::default()).ok()
         })
         .as_ref()
@@ -45,11 +69,10 @@ fn day_to_persian_digits(day: u32) -> Vec<char> {
 }
 
 /// Renders a dynamic 64x64 RGBA day icon in memory using `fontdue`.
-/// Rounded square (radius 12), background #14171f, 2px border in accent color, white antialiased text.
 pub fn render_day_icon(day: u32, accent: [u8; 3]) -> Image<'static> {
-    let bg_r = 0x14u8; // 20 (#14171f)
-    let bg_g = 0x17u8; // 23
-    let bg_b = 0x1fu8; // 31
+    let bg_r = 0x14u8;
+    let bg_g = 0x17u8;
+    let bg_b = 0x1fu8;
 
     let border_r = accent[0];
     let border_g = accent[1];
@@ -60,7 +83,6 @@ pub fn render_day_icon(day: u32, accent: [u8; 3]) -> Image<'static> {
     let radius = 12.0f32;
     let border_width = 2.0f32;
 
-    // 1. Draw rounded box with 2px border and #14171f background
     for y in 0..64 {
         for x in 0..64 {
             let px = x as f32 + 0.5;
@@ -81,19 +103,16 @@ pub fn render_day_icon(day: u32, accent: [u8; 3]) -> Image<'static> {
             let idx = (y * 64 + x) * 4;
 
             if dist > 0.0 {
-                // Outside rounded corners: transparent
                 rgba[idx] = 0;
                 rgba[idx + 1] = 0;
                 rgba[idx + 2] = 0;
                 rgba[idx + 3] = 0;
             } else if dist >= -border_width {
-                // 2px border in accent color
                 rgba[idx] = border_r;
                 rgba[idx + 1] = border_g;
                 rgba[idx + 2] = border_b;
                 rgba[idx + 3] = 255;
             } else {
-                // Interior fill #14171f
                 rgba[idx] = bg_r;
                 rgba[idx + 1] = bg_g;
                 rgba[idx + 2] = bg_b;
@@ -102,7 +121,6 @@ pub fn render_day_icon(day: u32, accent: [u8; 3]) -> Image<'static> {
         }
     }
 
-    // 2. Rasterize Persian digits using fontdue if font is available
     if let Some(font) = get_font() {
         let chars = day_to_persian_digits(day);
         let font_size = if chars.len() == 1 { 40.0f32 } else { 32.0f32 };
@@ -113,7 +131,6 @@ pub fn render_day_icon(day: u32, accent: [u8; 3]) -> Image<'static> {
             (font_size * 0.8, -font_size * 0.2)
         };
 
-        // Baseline calculation from horizontal_line_metrics to center vertically at 32.0
         let baseline = 32.0 + (ascent + descent) / 2.0;
 
         let mut rasterized = Vec::with_capacity(chars.len());
@@ -125,51 +142,49 @@ pub fn render_day_icon(day: u32, accent: [u8; 3]) -> Image<'static> {
             rasterized.push((metrics, bitmap));
         }
 
-        // Center horizontally
         let start_x = (64.0 - total_advance) / 2.0;
 
-        // 3. Alpha-blend coverage bitmap into RGBA buffer (white text, standard premultiplication)
         let mut curr_x = start_x;
-    for (metrics, bitmap) in rasterized {
-        let glyph_left = (curr_x + metrics.xmin as f32).round() as i32;
-        let glyph_top = (baseline - (metrics.ymin + metrics.height as i32) as f32).round() as i32;
+        for (metrics, bitmap) in rasterized {
+            let glyph_left = (curr_x + metrics.xmin as f32).round() as i32;
+            let glyph_top =
+                (baseline - (metrics.ymin + metrics.height as i32) as f32).round() as i32;
 
-        for row in 0..metrics.height {
-            for col in 0..metrics.width {
-                let cov = bitmap[row * metrics.width + col];
-                if cov == 0 {
-                    continue;
-                }
+            for row in 0..metrics.height {
+                for col in 0..metrics.width {
+                    let cov = bitmap[row * metrics.width + col];
+                    if cov == 0 {
+                        continue;
+                    }
 
-                let px = glyph_left + col as i32;
-                let py = glyph_top + row as i32;
+                    let px = glyph_left + col as i32;
+                    let py = glyph_top + row as i32;
 
-                if px >= 0 && px < 64 && py >= 0 && py < 64 {
-                    let idx = ((py as usize) * 64 + (px as usize)) * 4;
-                    let src_a = cov as f32 / 255.0;
+                    if (0..64).contains(&px) && (0..64).contains(&py) {
+                        let idx = ((py as usize) * 64 + (px as usize)) * 4;
+                        let src_a = cov as f32 / 255.0;
 
-                    let dst_r = rgba[idx] as f32;
-                    let dst_g = rgba[idx + 1] as f32;
-                    let dst_b = rgba[idx + 2] as f32;
-                    let dst_a = rgba[idx + 3] as f32 / 255.0;
+                        let dst_r = rgba[idx] as f32;
+                        let dst_g = rgba[idx + 1] as f32;
+                        let dst_b = rgba[idx + 2] as f32;
+                        let dst_a = rgba[idx + 3] as f32 / 255.0;
 
-                    // Source is pure white [255.0, 255.0, 255.0]
-                    let out_a = src_a + dst_a * (1.0 - src_a);
-                    if out_a > 0.0 {
-                        let out_r = (255.0 * src_a + dst_r * dst_a * (1.0 - src_a)) / out_a;
-                        let out_g = (255.0 * src_a + dst_g * dst_a * (1.0 - src_a)) / out_a;
-                        let out_b = (255.0 * src_a + dst_b * dst_a * (1.0 - src_a)) / out_a;
+                        let out_a = src_a + dst_a * (1.0 - src_a);
+                        if out_a > 0.0 {
+                            let out_r = (255.0 * src_a + dst_r * dst_a * (1.0 - src_a)) / out_a;
+                            let out_g = (255.0 * src_a + dst_g * dst_a * (1.0 - src_a)) / out_a;
+                            let out_b = (255.0 * src_a + dst_b * dst_a * (1.0 - src_a)) / out_a;
 
-                        rgba[idx] = out_r.round().clamp(0.0, 255.0) as u8;
-                        rgba[idx + 1] = out_g.round().clamp(0.0, 255.0) as u8;
-                        rgba[idx + 2] = out_b.round().clamp(0.0, 255.0) as u8;
-                        rgba[idx + 3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
+                            rgba[idx] = out_r.round().clamp(0.0, 255.0) as u8;
+                            rgba[idx + 1] = out_g.round().clamp(0.0, 255.0) as u8;
+                            rgba[idx + 2] = out_b.round().clamp(0.0, 255.0) as u8;
+                            rgba[idx + 3] = (out_a * 255.0).round().clamp(0.0, 255.0) as u8;
+                        }
                     }
                 }
             }
+            curr_x += metrics.advance_width;
         }
-        curr_x += metrics.advance_width;
-    }
     }
 
     Image::new_owned(rgba, 64, 64)
@@ -192,7 +207,7 @@ pub fn spawn_midnight_watcher(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut last_day = get_today_jalali().2;
         loop {
-            let now = chrono::Local::now();
+            let now = Local::now();
             let elapsed_today = (now.hour() * 3600 + now.minute() * 60 + now.second()) as u64;
             let seconds_to_midnight = 86400u64.saturating_sub(elapsed_today);
             let sleep_secs = seconds_to_midnight.max(1);
@@ -209,7 +224,10 @@ pub fn spawn_midnight_watcher(app: AppHandle) {
 }
 
 /// Configures the native Windows system tray icon and menus.
-pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn setup_system_tray(
+    app: &AppHandle,
+    notes_mgr: Arc<NotesManager>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let (jy, jm, jd) = get_today_jalali();
     let initial_icon = render_day_icon(jd, [34, 211, 238]);
     let initial_tooltip = format!("تقویم: {}", format_full_persian_date(jy, jm, jd));
@@ -249,7 +267,7 @@ pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Resul
             "autostart" => {
                 let mut s = notes_mgr.get_settings();
                 s.autostart = !s.autostart;
-                notes_mgr.save_settings(s);
+                let _ = notes_mgr.save_settings(s);
             }
             "quit" => {
                 std::process::exit(0);
@@ -290,7 +308,8 @@ pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Resul
                     } else {
                         let x = (position.x as i32 - 180).max(10);
                         let y = (position.y as i32 - 530).max(10);
-                        let _ = popup.set_position(tauri::Position::Physical(PhysicalPosition { x, y }));
+                        let _ =
+                            popup.set_position(tauri::Position::Physical(PhysicalPosition { x, y }));
                         let _ = popup.show();
                         let _ = popup.set_focus();
                     }
@@ -301,7 +320,10 @@ pub fn setup_system_tray(app: &AppHandle, notes_mgr: Arc<NotesManager>) -> Resul
     let tray = match builder.build(app) {
         Ok(t) => Some(t),
         Err(e) => {
-            log::warn!("Tray build with custom icon failed: {:?}, falling back to default", e);
+            log::warn!(
+                "Tray build with custom icon failed: {:?}, falling back to default",
+                e
+            );
             if let Some(default_icon) = app.default_window_icon() {
                 TrayIconBuilder::with_id("taghvim_tray")
                     .icon(default_icon.clone())
@@ -338,7 +360,6 @@ mod tests {
                 day
             );
 
-            // Background color is #14171f (20, 23, 31, 255)
             let mut non_bg_count = 0;
             let mut white_glyph_pixel_count = 0;
             for chunk in raw.chunks_exact(4) {

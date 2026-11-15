@@ -3,27 +3,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-use chrono::NaiveDate;
-#[cfg(desktop)]
-use chrono::Datelike;
+use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
-
-#[cfg(desktop)]
-pub const JALALI_MONTH_NAMES: [&str; 12] = [
-    "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
-    "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند",
-];
 
 pub const PERSIAN_WEEK_DAYS: [&str; 7] = [
     "شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TimeIrEvent {
     pub id: String,
+    #[serde(alias = "jalali_year")]
     pub jalali_year: i32,
+    #[serde(alias = "jalali_month")]
     pub jalali_month: u32,
+    #[serde(alias = "jalali_day")]
     pub jalali_day: u32,
+    #[serde(alias = "is_holiday")]
     pub is_holiday: bool,
     pub title: String,
     pub description: Option<String>,
@@ -31,6 +28,7 @@ pub struct TimeIrEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DateConversionResponse {
     pub jalali: DatePart,
     pub gregorian: DatePart,
@@ -39,6 +37,7 @@ pub struct DateConversionResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DatePart {
     pub year: i32,
     pub month: u32,
@@ -124,15 +123,15 @@ pub fn jalali_to_gregorian(mut jy: i32, jm: u32, jd: u32) -> (i32, u32, u32) {
 }
 
 /// Converts Gregorian to Julian Day Number (JDN).
-pub fn gregorian_to_jdn(gy: i32, gm: u32, gd: u32) -> i64 {
-    let a = ((14 - gm as i64) / 12) as i64;
+fn gregorian_to_jdn(gy: i32, gm: u32, gd: u32) -> i64 {
+    let a = (14 - gm as i64) / 12;
     let y = gy as i64 + 4800 - a;
     let m = gm as i64 + 12 * a - 3;
     (gd as i64) + ((153 * m + 2) / 5) + 365 * y + (y / 4) - (y / 100) + (y / 400) - 32045
 }
 
 /// Converts Julian Day Number to Gregorian.
-pub fn jdn_to_gregorian(jdn: i64) -> (i32, u32, u32) {
+fn jdn_to_gregorian(jdn: i64) -> (i32, u32, u32) {
     let a = jdn + 32044;
     let b = (4 * a + 3) / 146097;
     let c = a - (146097 * b) / 4;
@@ -146,7 +145,7 @@ pub fn jdn_to_gregorian(jdn: i64) -> (i32, u32, u32) {
 }
 
 /// Converts Julian Day Number to Lunar Hijri (Islamic tabular).
-pub fn jdn_to_hijri(jdn: i64) -> (i32, u32, u32) {
+fn jdn_to_hijri(jdn: i64) -> (i32, u32, u32) {
     let mut l = jdn - 1948440 + 10632;
     let n = (l - 1) / 10631;
     l = l - 10631 * n + 354;
@@ -166,7 +165,7 @@ pub fn jalali_to_hijri(jy: i32, jm: u32, jd: u32) -> (i32, u32, u32) {
 }
 
 /// Converts Lunar Hijri to Julian Day Number (JDN).
-pub fn hijri_to_jdn(hy: i32, hm: u32, hd: u32) -> i64 {
+fn hijri_to_jdn(hy: i32, hm: u32, hd: u32) -> i64 {
     let y = hy as i64;
     let m = hm as i64;
     let d = hd as i64;
@@ -223,29 +222,6 @@ pub fn to_persian_digits(value: impl std::fmt::Display) -> String {
             other => other,
         })
         .collect()
-}
-
-/// Formats full Persian date: "یکشنبه، ۵ آبان ۱۴۰۵"
-#[cfg(desktop)]
-pub fn format_full_persian_date(jy: i32, jm: u32, jd: u32) -> String {
-    let dow = get_persian_day_of_week(jy, jm, jd);
-    let day_name = PERSIAN_WEEK_DAYS[dow];
-    let month_name = JALALI_MONTH_NAMES.get((jm.saturating_sub(1)) as usize).unwrap_or(&"");
-    format!(
-        "{}، {} {} {}",
-        day_name,
-        to_persian_digits(jd),
-        month_name,
-        to_persian_digits(jy)
-    )
-}
-
-/// Returns today's Jalali date from local system clock.
-#[cfg(desktop)]
-pub fn get_today_jalali() -> (i32, u32, u32) {
-    use chrono::Local;
-    let now = Local::now();
-    gregorian_to_jalali(now.year(), now.month(), now.day())
 }
 
 /// Standard fixed national statutory holidays in Iran for offline computation.
@@ -376,5 +352,11 @@ mod tests {
 
         let (hy, hm, hd) = jalali_to_hijri(1405, 8, 3);
         assert_eq!((hy, hm, hd), (1448, 5, 13));
+    }
+
+    #[test]
+    fn test_persian_day_of_week_and_digits() {
+        assert_eq!(get_persian_day_of_week(1405, 8, 3), 1);
+        assert_eq!(to_persian_digits(1405), "۱۴۰۵");
     }
 }

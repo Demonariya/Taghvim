@@ -12,9 +12,9 @@ import {
   JALALI_MONTH_NAMES,
   GREGORIAN_MONTH_NAMES,
   HIJRI_MONTH_NAMES,
-} from '../utils/persianDate.ts';
-import { convertDateThreeWay } from '../services/tauriBridge.ts';
-import { DateConversionResult } from '../types/calendar.ts';
+} from '../shared/utils/persianDate.ts';
+import { convertDateThreeWay } from '../shared/services/calendarGrid.ts';
+import { DateConversionResult } from '../shared/types/calendar.ts';
 
 interface DateConverterProps {
   isOpen: boolean;

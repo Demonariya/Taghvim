@@ -1,14 +1,8 @@
 import React from 'react';
 import { Calendar } from 'lucide-react';
-import { minimizeWindow, toggleMaximizeWindow, hideToTray } from '../services/tauriBridge.ts';
-import { isAndroid } from '../platform.ts';
+import { minimizeWindow, toggleMaximizeWindow, hideToTray } from './adapter.ts';
 
 export const TitleBar: React.FC = () => {
-  // Do not render custom title bar or window controls on Android
-  if (isAndroid) {
-    return null;
-  }
-
   return (
     <div
       data-tauri-drag-region

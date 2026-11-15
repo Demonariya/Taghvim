@@ -11,15 +11,15 @@ import {
   CalendarDay,
   TimeIrEvent,
   AppSettings,
-} from '../types/calendar.ts';
+} from '../../shared/types/calendar.ts';
 import {
   formatFullPersianDate,
   toFa,
   JALALI_MONTH_NAMES,
   PERSIAN_WEEK_DAYS,
   getTodayJalali,
-} from '../utils/persianDate.ts';
-import { openMainWindow } from '../services/tauriBridge.ts';
+} from '../../shared/utils/persianDate.ts';
+import { openMainWindow } from './adapter.ts';
 
 interface TrayPopupViewProps {
   days: CalendarDay[];

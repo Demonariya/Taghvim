@@ -84,7 +84,7 @@ export function fromPersianDigits(value: string): string {
  */
 export function isJalaliLeapYear(jy: number): boolean {
   const base = ((jy > 0 ? jy - 474 : jy - 473) % 2820) + 474 + 38;
-  return ((base * 682) % 2816) < 682;
+  return (base * 682) % 2816 < 682;
 }
 
 /**

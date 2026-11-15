@@ -35,6 +35,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught exception:', error, errorInfo);
+    if (typeof window !== 'undefined' && window.__TAGHVIM_BOOT__) {
+      window.__TAGHVIM_BOOT__.errors.push(`ErrorBoundary: ${error.name}: ${error.message}`);
+    }
   }
 
   handleCopy = () => {
@@ -57,7 +60,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div
           dir="rtl"
-          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-6 bg-[#07080b] text-[#e6e9ef] font-['Digikala',sans-serif] select-none"
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-6 bg-[#07080b] text-[#e6e9ef] select-none"
         >
           <div className="w-full max-w-md p-6 rounded-2xl bg-[#14171f] border border-red-500/30 shadow-2xl flex flex-col gap-4 text-center">
             <div className="w-14 h-14 mx-auto rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 text-2xl font-bold">

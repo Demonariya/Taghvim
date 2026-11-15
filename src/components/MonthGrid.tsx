@@ -1,7 +1,7 @@
 import React from 'react';
-import { CalendarDay, AppSettings } from '../types/calendar.ts';
+import { CalendarDay, AppSettings } from '../shared/types/calendar.ts';
 import { DayCell } from './DayCell.tsx';
-import { PERSIAN_WEEK_DAYS } from '../utils/persianDate.ts';
+import { PERSIAN_WEEK_DAYS } from '../shared/utils/persianDate.ts';
 
 interface MonthGridProps {
   days: CalendarDay[];

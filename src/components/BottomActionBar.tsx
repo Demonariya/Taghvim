@@ -1,10 +1,10 @@
+import React from 'react';
 import {
   Sparkles,
   CalendarCheck,
   Bell,
   Settings,
 } from 'lucide-react';
-import { isAndroid } from '../platform.ts';
 
 interface BottomActionBarProps {
   onJumpToday: () => void;
@@ -20,14 +20,7 @@ export const BottomActionBar: React.FC<BottomActionBarProps> = ({
   onOpenSettings,
 }) => {
   return (
-    <div
-      style={{
-        paddingBottom: isAndroid ? 'env(safe-area-inset-bottom, 10px)' : undefined,
-      }}
-      className={`w-full bg-[#14171f] border-t border-[#232834] flex items-center justify-around px-2 shrink-0 select-none z-30 ${
-        isAndroid ? 'min-h-[58px] py-1.5' : 'h-14'
-      }`}
-    >
+    <div className="bottom-action-bar w-full h-14 bg-[#14171f] border-t border-[#232834] flex items-center justify-around px-2 shrink-0 select-none z-30">
       <button
         onClick={onJumpToday}
         className="flex flex-col items-center justify-center gap-1 text-[#8b93a5] hover:text-[#22d3ee] transition-colors cursor-pointer flex-1 py-1"

@@ -1,3 +1,8 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 export interface TimeIrEvent {
   id: string;
   jalaliYear: number;
@@ -75,4 +80,18 @@ export interface DateConversionResult {
     formatted: string;
   };
   dayOfWeekName: string;
+}
+
+export interface StartupStage {
+  stage: string;
+  status: string;
+  detail?: string;
+  timestamp: string;
+}
+
+export interface StartupDiagnosticsReport {
+  platform: string;
+  stages: StartupStage[];
+  errors: string[];
+  appDataDir?: string;
 }

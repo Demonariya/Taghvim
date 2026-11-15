@@ -6,12 +6,11 @@ import {
   Trash2,
   Clock,
 } from 'lucide-react';
-import { PersonalNote, AppSettings } from '../types/calendar.ts';
+import { PersonalNote, AppSettings } from '../shared/types/calendar.ts';
 import {
   toFa,
   JALALI_MONTH_NAMES,
-} from '../utils/persianDate.ts';
-import { sendNotification } from '../services/tauriBridge.ts';
+} from '../shared/utils/persianDate.ts';
 
 interface NotesRemindersProps {
   isOpen: boolean;
@@ -20,6 +19,8 @@ interface NotesRemindersProps {
   onDeleteNote: (id: string) => void;
   onToggleNoteComplete: (id: string) => void;
   settings: AppSettings;
+  onSendNotification: (title: string, body: string) => Promise<void>;
+  notificationTestBody?: string;
 }
 
 export const NotesReminders: React.FC<NotesRemindersProps> = ({
@@ -28,6 +29,8 @@ export const NotesReminders: React.FC<NotesRemindersProps> = ({
   notes,
   onDeleteNote,
   onToggleNoteComplete,
+  onSendNotification,
+  notificationTestBody = 'سیستم اعلان‌ها با موفقیت متصل است و به درستی کار می‌کند!',
 }) => {
   const [filter, setFilter] = useState<'all' | 'reminders' | 'completed'>('all');
   const [testNotificationSent, setTestNotificationSent] = useState(false);
@@ -41,9 +44,9 @@ export const NotesReminders: React.FC<NotesRemindersProps> = ({
   });
 
   const handleTestNotification = async () => {
-    await sendNotification(
+    await onSendNotification(
       'تقویم جلالی | یادآور آزمایشی',
-      'سیستم اعلان‌های ویندوز با موفقیت متصل است و به درستی کار می‌کند!'
+      notificationTestBody
     );
     setTestNotificationSent(true);
     setTimeout(() => setTestNotificationSent(false), 3000);

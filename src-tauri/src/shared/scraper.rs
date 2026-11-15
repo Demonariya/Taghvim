@@ -3,19 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-use std::fs;
-use std::path::PathBuf;
-use std::time::Duration;
 use chrono::{DateTime, Utc};
 use log::{info, warn};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, USER_AGENT};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
+use std::time::Duration;
 use tokio::time::sleep;
 
-use crate::calendar::{get_standard_fallback_holidays, TimeIrEvent};
+use crate::shared::calendar::{get_standard_fallback_holidays, TimeIrEvent};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MonthEventsResult {
     pub events: Vec<TimeIrEvent>,
     pub is_offline: bool,
@@ -71,7 +72,10 @@ pub async fn fetch_month_events_with_cache(
     }
 
     // 2. Fetch fresh from time.ir with retry and logging
-    info!("[time.ir] Requesting fresh events for year {}, month {} from time.ir...", year, month);
+    info!(
+        "[time.ir] Requesting fresh events for year {}, month {} from time.ir...",
+        year, month
+    );
     match scrape_time_ir_with_backoff(year, month).await {
         Ok(scraped_events) => {
             let timestamp = Utc::now().to_rfc3339();
@@ -105,9 +109,11 @@ pub async fn fetch_month_events_with_cache(
         }
         Err(err) => {
             let err_msg = err.to_string();
-            warn!("[time.ir] Fetch failed: {}. Checking existing cache or fallback.", err_msg);
+            warn!(
+                "[time.ir] Fetch failed: {}. Checking existing cache or fallback.",
+                err_msg
+            );
 
-            // If an older cache file exists on disk, use it with is_offline = true
             if let Ok(content) = fs::read_to_string(&cache_file) {
                 if let Ok(cached) = serde_json::from_str::<CachedMonthData>(&content) {
                     info!(
@@ -123,7 +129,6 @@ pub async fn fetch_month_events_with_cache(
                 }
             }
 
-            // Built-in offline fallback: standard Iranian national statutory holidays
             let fallback_events = get_standard_fallback_holidays(year, month);
             info!(
                 "[time.ir] Falling back to built-in calendar rules ({} statutory events)",
@@ -140,7 +145,6 @@ pub async fn fetch_month_events_with_cache(
     }
 }
 
-/// Perform HTTP GET with realistic browser headers, 10s timeout, and 3 exponential backoff attempts.
 async fn scrape_time_ir_with_backoff(
     year: i32,
     month: u32,
@@ -175,7 +179,10 @@ async fn scrape_time_ir_with_backoff(
                 if status.is_success() {
                     let html_text = response.text().await?;
                     let events = parse_time_ir_html(&html_text, year, month)?;
-                    info!("[time.ir] Successfully extracted {} events from DOM", events.len());
+                    info!(
+                        "[time.ir] Successfully extracted {} events from DOM",
+                        events.len()
+                    );
                     return Ok(events);
                 } else {
                     last_err = format!("HTTP error: {}", status);
@@ -196,7 +203,6 @@ async fn scrape_time_ir_with_backoff(
     Err(format!("Scrape failed after 3 attempts: {}", last_err).into())
 }
 
-/// Defensive HTML parser extracting events and holiday badges.
 fn parse_time_ir_html(
     html_text: &str,
     year: i32,
@@ -210,7 +216,12 @@ fn parse_time_ir_html(
         Selector::parse(".eventHoliday, .holiday, span.text-danger").map_err(|e| format!("{:?}", e))?;
 
     for (idx, li_element) in document.select(&li_selector).enumerate() {
-        let text = li_element.text().collect::<Vec<_>>().join(" ").trim().to_string();
+        let text = li_element
+            .text()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim()
+            .to_string();
         if text.is_empty() {
             continue;
         }
@@ -237,9 +248,9 @@ fn parse_time_ir_html(
         });
     }
 
-    // Secondary fallback for alternative DOM markup
     if events.is_empty() {
-        let event_calendar_sel = Selector::parse(".eventsList, .event-item").map_err(|e| format!("{:?}", e))?;
+        let event_calendar_sel =
+            Selector::parse(".eventsList, .event-item").map_err(|e| format!("{:?}", e))?;
         for (idx, elem) in document.select(&event_calendar_sel).enumerate() {
             let text = elem.text().collect::<Vec<_>>().join(" ").trim().to_string();
             if !text.is_empty() {

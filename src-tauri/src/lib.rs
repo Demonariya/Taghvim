@@ -3,317 +3,103 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-use std::sync::Arc;
-use tauri::{AppHandle, Manager, State};
+pub mod shared;
 
-#[cfg(desktop)]
-use tauri::WindowEvent;
-#[cfg(desktop)]
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+#[cfg(target_os = "android")]
+mod android;
 
-mod calendar;
-mod notes;
-mod scraper;
+#[cfg(target_os = "windows")]
+mod windows;
 
-#[cfg(desktop)]
-mod tray_icon;
+#[cfg(any(target_os = "android", target_os = "windows"))]
+use std::path::PathBuf;
+#[cfg(any(target_os = "android", target_os = "windows"))]
+use std::sync::{Arc, OnceLock};
+#[cfg(any(target_os = "android", target_os = "windows"))]
+use tauri::Manager;
 
-use calendar::{
-    gregorian_to_jalali, hijri_to_jalali, jalali_to_gregorian, jalali_to_hijri,
-    to_persian_digits, DateConversionResponse, DatePart, PERSIAN_WEEK_DAYS,
+#[cfg(any(target_os = "android", target_os = "windows"))]
+use shared::commands::{
+    convert_date, delete_note, get_month_events, get_notes, get_settings,
+    get_startup_diagnostics, save_note, save_settings, AppState,
 };
-use notes::{AppSettings, NotesManager, PersonalNote};
-use scraper::{fetch_month_events_with_cache, MonthEventsResult};
+#[cfg(any(target_os = "android", target_os = "windows"))]
+use shared::diagnostics::StartupDiagnostics;
+#[cfg(any(target_os = "android", target_os = "windows"))]
+use shared::notes::NotesManager;
 
-struct AppState {
-    notes_manager: Arc<NotesManager>,
-}
-
-#[tauri::command]
-async fn get_month_events(
-    app: AppHandle,
-    year: i32,
-    month: u32,
-    force_refresh: Option<bool>,
-) -> Result<MonthEventsResult, String> {
-    let cache_dir = match app.path().app_data_dir() {
-        Ok(dir) => dir,
-        Err(_) => std::env::temp_dir().join("com.taghvim.calendar"),
-    }
-    .join("events_cache");
-
-    let result = fetch_month_events_with_cache(
-        cache_dir,
-        year,
-        month,
-        force_refresh.unwrap_or(false),
-    )
-    .await;
-
-    Ok(result)
-}
-
-#[tauri::command]
-fn get_notes(state: State<AppState>) -> Result<Vec<PersonalNote>, String> {
-    Ok(state.notes_manager.get_notes())
-}
-
-#[tauri::command]
-fn save_note(state: State<AppState>, note: PersonalNote) -> Result<Vec<PersonalNote>, String> {
-    Ok(state.notes_manager.save_note(note))
-}
-
-#[tauri::command]
-fn delete_note(state: State<AppState>, id: String) -> Result<Vec<PersonalNote>, String> {
-    Ok(state.notes_manager.delete_note(&id))
-}
-
-#[tauri::command]
-fn get_settings(state: State<AppState>) -> Result<AppSettings, String> {
-    Ok(state.notes_manager.get_settings())
-}
-
-#[tauri::command]
-fn save_settings(state: State<AppState>, settings: AppSettings) -> Result<(), String> {
-    state.notes_manager.save_settings(settings);
-    Ok(())
-}
-
-#[tauri::command]
-fn convert_date(
-    source_type: String,
-    year: i32,
-    month: u32,
-    day: u32,
-) -> Result<DateConversionResponse, String> {
-    let (jy, jm, jd) = match source_type.as_str() {
-        "gregorian" => gregorian_to_jalali(year, month, day),
-        "hijri" => hijri_to_jalali(year, month, day),
-        _ => (year, month, day),
-    };
-
-    let (gy, gm, gd) = jalali_to_gregorian(jy, jm, jd);
-    let (hy, hm, hd) = jalali_to_hijri(jy, jm, jd);
-    let dow = calendar::get_persian_day_of_week(jy, jm, jd);
-
-    Ok(DateConversionResponse {
-        jalali: DatePart {
-            year: jy,
-            month: jm,
-            day: jd,
-            formatted: format!("{}/{:02}/{:02}", to_persian_digits(jy), to_persian_digits(jm), to_persian_digits(jd)),
-        },
-        gregorian: DatePart {
-            year: gy,
-            month: gm,
-            day: gd,
-            formatted: format!("{}/{:02}/{:02}", gy, gm, gd),
-        },
-        hijri: DatePart {
-            year: hy,
-            month: hm,
-            day: hd,
-            formatted: format!("{}/{:02}/{:02}", to_persian_digits(hy), to_persian_digits(hm), to_persian_digits(hd)),
-        },
-        day_of_week_name: PERSIAN_WEEK_DAYS[dow].to_string(),
-    })
-}
-
-#[cfg(desktop)]
-#[tauri::command]
-fn minimize_window(app: AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.minimize();
-    }
-    Ok(())
-}
-
-#[cfg(desktop)]
-#[tauri::command]
-fn toggle_maximize_window(app: AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("main") {
-        if w.is_maximized().unwrap_or(false) {
-            let _ = w.unmaximize();
-        } else {
-            let _ = w.maximize();
-        }
-    }
-    Ok(())
-}
-
-#[cfg(desktop)]
-#[tauri::command]
-fn hide_to_tray(app: AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.hide();
-    }
-    Ok(())
-}
-
-#[cfg(desktop)]
-#[tauri::command]
-fn open_main_window(app: AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.set_focus();
-    }
-    if let Some(p) = app.get_webview_window("tray-popup") {
-        let _ = p.hide();
-    }
-    Ok(())
-}
-
-#[cfg(desktop)]
-#[tauri::command]
-fn close_app() {
-    std::process::exit(0);
-}
-
+#[cfg(any(target_os = "android", target_os = "windows"))]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Set panic hook to log fatal errors with timestamp to both temp dir and app data dir
-    std::panic::set_hook(Box::new(|info| {
-        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
-            s.to_string()
-        } else if let Some(s) = info.payload().downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "Unknown panic payload".to_string()
-        };
+    let platform_name = if cfg!(target_os = "android") {
+        "android"
+    } else {
+        "windows"
+    };
+    let diagnostics = StartupDiagnostics::new(platform_name);
+    diagnostics.record_stage("rust_entry_started", Some(platform_name));
 
-        let location = if let Some(loc) = info.location() {
-            format!("{}:{}:{}", loc.file(), loc.line(), loc.column())
-        } else {
-            "unknown location".to_string()
-        };
+    let crash_dir = Arc::new(OnceLock::<PathBuf>::new());
 
-        let timestamp = chrono::Local::now().to_rfc3339();
-        let report = format!(
-            "[{}] Taghvim fatal crash:\nPayload: {}\nLocation: {}\n",
-            timestamp, payload, location
-        );
-        eprintln!("{}", report);
+    #[cfg(target_os = "android")]
+    android::install_panic_hook(Arc::clone(&crash_dir), diagnostics.clone());
 
-        // 1. Write to system temp directory
-        let temp_log = std::env::temp_dir().join("taghvim_crash.log");
-        let _ = std::fs::write(&temp_log, &report);
+    #[cfg(target_os = "windows")]
+    windows::install_panic_hook(Arc::clone(&crash_dir), diagnostics.clone());
 
-        // 2. Write to persistent app data dir if available
-        #[cfg(desktop)]
-        {
-            if let Some(app_data) = std::env::var_os("APPDATA") {
-                let app_dir = std::path::PathBuf::from(app_data).join("com.taghvim.calendar");
-                let _ = std::fs::create_dir_all(&app_dir);
-                let _ = std::fs::write(app_dir.join("crash.log"), &report);
-            }
-        }
-    }));
+    let builder = tauri::Builder::default();
 
-    let mut builder = tauri::Builder::default();
+    #[cfg(target_os = "android")]
+    let builder = android::register_plugins(builder, &diagnostics);
 
-    // 1. Initialize tauri-plugin-log FIRST so log output & panics route properly on all platforms
-    #[cfg(desktop)]
-    let log_targets = [
-        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
-        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
-    ];
-    #[cfg(not(desktop))]
-    let log_targets = [
-        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
-    ];
+    #[cfg(target_os = "windows")]
+    let builder = windows::register_plugins(builder, &diagnostics);
 
-    builder = builder.plugin(
-        tauri_plugin_log::Builder::new()
-            .targets(log_targets)
-            .build(),
-    );
+    let setup_diagnostics = diagnostics.clone();
+    let setup_crash_dir = Arc::clone(&crash_dir);
 
-    // 2. Desktop-specific plugins
-    #[cfg(desktop)]
-    {
-        builder = builder
-            .plugin(tauri_plugin_autostart::init(
-                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-                Some(vec!["--minimized"]),
-            ))
-            .plugin(tauri_plugin_global_shortcut::Builder::new().build());
-    }
+    let result = builder
+        .setup(move |app| {
+            setup_diagnostics.record_stage("setup_started", None);
 
-    // 3. Notification plugin (all platforms)
-    builder = builder.plugin(tauri_plugin_notification::init());
+            #[cfg(target_os = "android")]
+            let app_data_dir = android::resolve_app_data_dir(app, &setup_diagnostics);
 
-    builder
-        .setup(|app| {
-            let app_data_dir = match app.path().app_data_dir() {
-                Ok(dir) => dir,
-                Err(err) => {
-                    log::warn!("Failed to resolve app_data_dir ({:?}), using fallback temp dir", err);
-                    std::env::temp_dir().join("com.taghvim.calendar")
-                }
-            };
-            let notes_mgr = Arc::new(NotesManager::new(app_data_dir));
+            #[cfg(target_os = "windows")]
+            let app_data_dir = windows::resolve_app_data_dir(app, &setup_diagnostics);
 
-            #[cfg(desktop)]
-            notes_mgr.spawn_reminder_watcher(app.handle().clone());
+            let notes_mgr = Arc::new(NotesManager::new(app_data_dir.clone(), &setup_diagnostics));
+            setup_diagnostics.record_stage("notes_manager_initialized", None);
 
-            #[cfg(desktop)]
-            {
-                if let Err(e) = tray_icon::setup_system_tray(app.handle(), Arc::clone(&notes_mgr)) {
-                    log::warn!("System tray setup skipped or failed: {:?}", e);
-                } else {
-                    tray_icon::refresh_tray_icon(app.handle());
-                    tray_icon::spawn_midnight_watcher(app.handle().clone());
-                }
+            #[cfg(target_os = "android")]
+            android::setup(app, &app_data_dir, &setup_crash_dir, &setup_diagnostics);
 
-                // Global shortcut Ctrl+Alt+J safely parsed
-                if let Ok(shortcut) = "Ctrl+Alt+J".parse::<Shortcut>() {
-                    let app_handle = app.handle().clone();
-                    let _ = app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
-                        if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                            if let Some(w) = app_handle.get_webview_window("main") {
-                                if w.is_visible().unwrap_or(false) {
-                                    let _ = w.hide();
-                                } else {
-                                    let _ = w.show();
-                                    let _ = w.set_focus();
-                                }
-                            }
-                        }
-                    });
-                }
-            }
+            #[cfg(target_os = "windows")]
+            windows::setup(
+                app,
+                &app_data_dir,
+                &setup_crash_dir,
+                &notes_mgr,
+                &setup_diagnostics,
+            );
 
             app.manage(AppState {
                 notes_manager: notes_mgr,
+                diagnostics: setup_diagnostics.clone(),
             });
+            setup_diagnostics.record_stage("app_state_managed", None);
+            setup_diagnostics.persist_snapshot();
 
             Ok(())
         })
         .on_window_event(|window, event| {
-            #[cfg(desktop)]
-            {
-                if window.label() == "main" {
-                    // Closing main window hides to tray instead of quitting
-                    if let WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = window.hide();
-                    }
-                } else if window.label() == "tray-popup" {
-                    // Hide tray popup automatically when it loses focus
-                    if let WindowEvent::Focused(false) = event {
-                        let _ = window.hide();
-                    }
-                }
-            }
-            #[cfg(not(desktop))]
-            {
-                let _ = (window, event);
-            }
+            #[cfg(target_os = "windows")]
+            windows::handle_window_event(window, event);
+            #[cfg(target_os = "android")]
+            let _ = (window, event);
         })
         .invoke_handler({
-            #[cfg(desktop)]
+            #[cfg(target_os = "windows")]
             {
                 tauri::generate_handler![
                     get_month_events,
@@ -323,14 +109,15 @@ pub fn run() {
                     get_settings,
                     save_settings,
                     convert_date,
-                    minimize_window,
-                    toggle_maximize_window,
-                    hide_to_tray,
-                    open_main_window,
-                    close_app,
+                    get_startup_diagnostics,
+                    windows::commands::minimize_window,
+                    windows::commands::toggle_maximize_window,
+                    windows::commands::hide_to_tray,
+                    windows::commands::open_main_window,
+                    windows::commands::close_app,
                 ]
             }
-            #[cfg(not(desktop))]
+            #[cfg(target_os = "android")]
             {
                 tauri::generate_handler![
                     get_month_events,
@@ -340,9 +127,18 @@ pub fn run() {
                     get_settings,
                     save_settings,
                     convert_date,
+                    get_startup_diagnostics,
                 ]
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Taghvim Tauri application");
+        .run(tauri::generate_context!());
+
+    if let Err(err) = result {
+        let msg = format!("error while running Taghvim Tauri application: {:?}", err);
+        diagnostics.record_error("tauri_run", &msg);
+        diagnostics.persist_snapshot();
+        #[cfg(target_os = "android")]
+        android::logcat_write(true, &msg);
+        panic!("{}", msg);
+    }
 }

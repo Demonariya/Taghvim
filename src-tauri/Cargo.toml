@@ -14,20 +14,19 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
-tauri = { version = "2.12", features = ["image-png"] }
+tauri = { version = "2.12", features = [] }
 tauri-plugin-notification = "2.7"
 tauri-plugin-log = "2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 scraper = "0.20"
-tokio = { version = "1.40", features = ["full"] }
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "time"] }
 chrono = { version = "0.4", features = ["serde"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
 log = "0.4"
 
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri = { version = "2.12", features = ["tray-icon"] }
+[target.'cfg(target_os = "windows")'.dependencies]
+tauri = { version = "2.12", features = ["tray-icon", "image-png"] }
 tauri-plugin-autostart = "2.7"
 tauri-plugin-global-shortcut = "2.4"
 fontdue = "0.9"

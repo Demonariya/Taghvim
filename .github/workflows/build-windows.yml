@@ -65,7 +65,7 @@ jobs:
             $failed = $true
           }
 
-          # 2. tauri.conf.json commands and package.json scripts contain no bun, pnpm or yarn
+          # 2. Tauri configs and package.json scripts contain no bun, pnpm or yarn
           $pkgJson = Get-Content -Raw "package.json" | ConvertFrom-Json
           $scripts = $pkgJson.scripts
           $forbiddenTools = @("bun", "pnpm", "yarn")
@@ -79,22 +79,37 @@ jobs:
             }
           }
           $tauriConf = Get-Content -Raw "src-tauri/tauri.conf.json" | ConvertFrom-Json
-          $buildCmds = @($tauriConf.build.beforeBuildCommand, $tauriConf.build.beforeDevCommand)
+          $winConf = Get-Content -Raw "src-tauri/tauri.windows.conf.json" | ConvertFrom-Json
+          $buildCmds = @($tauriConf.build.beforeBuildCommand, $tauriConf.build.beforeDevCommand, $winConf.build.beforeBuildCommand, $winConf.build.beforeDevCommand)
           foreach ($cmd in $buildCmds) {
             if ($cmd) {
               foreach ($tool in $forbiddenTools) {
                 if ($cmd -match "\b$tool\b") {
-                  Write-Host "::error::Preflight check failed: tauri.conf.json build command contains forbidden tool '$tool': $cmd"
+                  Write-Host "::error::Preflight check failed: Tauri config command contains forbidden tool '$tool': $cmd"
                   $failed = $true
                 }
               }
             }
           }
 
-          # 3. src-tauri/icons/icon.ico exists (Windows) and PNG icons listed in config exist
+          # 3. src-tauri/icons/icon.ico exists with multi-resolution directory and PNG icons listed in config exist
           if (-not (Test-Path "src-tauri/icons/icon.ico")) {
             Write-Host "::error::Preflight check failed: Windows icon 'src-tauri/icons/icon.ico' does not exist."
             $failed = $true
+          } else {
+            node -e '
+              const fs = require("fs");
+              const buf = fs.readFileSync("src-tauri/icons/icon.ico");
+              const count = buf.readUInt16LE(4);
+              if (count < 5) {
+                console.error(`::error::icon.ico has only ${count} image entries; expected multi-resolution ICO.`);
+                process.exit(1);
+              }
+              console.log(`Verified icon.ico contains ${count} resolution entries.`);
+            '
+            if ($LASTEXITCODE -ne 0) {
+              $failed = $true
+            }
           }
           if ($tauriConf.bundle -and $tauriConf.bundle.icon) {
             foreach ($iconPath in $tauriConf.bundle.icon) {
@@ -206,10 +221,16 @@ jobs:
       - name: TypeScript typecheck
         run: npx tsc --noEmit
 
-      - name: Frontend build check
-        run: npm run build
+      - name: Run frontend unit tests
+        run: npm test
 
-      - name: Run Clippy check
+      - name: Windows frontend build check
+        run: npm run build:windows
+
+      - name: Run Rust unit tests (Windows & shared modules)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Run Windows Clippy check
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
       - name: Extract version and tag

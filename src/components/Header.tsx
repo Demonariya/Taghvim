@@ -9,8 +9,8 @@ import {
 import {
   JALALI_MONTH_NAMES,
   toFa,
-} from '../utils/persianDate.ts';
-import { AppSettings } from '../types/calendar.ts';
+} from '../shared/utils/persianDate.ts';
+import { AppSettings } from '../shared/types/calendar.ts';
 
 interface HeaderProps {
   currentYear: number;

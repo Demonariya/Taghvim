@@ -10,13 +10,13 @@ import {
   Sparkles,
   Bookmark,
 } from 'lucide-react';
-import { CalendarDay, PersonalNote, AppSettings } from '../types/calendar.ts';
+import { CalendarDay, PersonalNote, AppSettings } from '../shared/types/calendar.ts';
 import {
   formatFullPersianDate,
   toFa,
   GREGORIAN_MONTH_NAMES,
   HIJRI_MONTH_NAMES,
-} from '../utils/persianDate.ts';
+} from '../shared/utils/persianDate.ts';
 
 interface DayDetailModalProps {
   day: CalendarDay | null;

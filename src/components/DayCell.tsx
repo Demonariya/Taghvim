@@ -1,6 +1,6 @@
 import React from 'react';
-import { CalendarDay, AppSettings } from '../types/calendar.ts';
-import { toFa, HIJRI_MONTH_NAMES, GREGORIAN_MONTH_NAMES } from '../utils/persianDate.ts';
+import { CalendarDay, AppSettings } from '../shared/types/calendar.ts';
+import { toFa, HIJRI_MONTH_NAMES, GREGORIAN_MONTH_NAMES } from '../shared/utils/persianDate.ts';
 
 interface DayCellProps {
   day: CalendarDay;
