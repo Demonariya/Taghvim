@@ -362,7 +362,7 @@ mod tests {
 
             let mut non_bg_count = 0;
             let mut white_glyph_pixel_count = 0;
-            for chunk in raw.chunks_exact(4) {
+            for chunk in raw.as_chunks::<4>().0 {
                 let is_bg = chunk[0] == 20 && chunk[1] == 23 && chunk[2] == 31 && chunk[3] == 255;
                 if !is_bg {
                     non_bg_count += 1;
