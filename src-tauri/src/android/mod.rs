@@ -37,6 +37,7 @@ pub fn logcat_write(is_error: bool, message: &str) {
 }
 
 pub fn install_panic_hook(crash_dir: Arc<OnceLock<PathBuf>>, diagnostics: StartupDiagnostics) {
+    let hook_diagnostics = diagnostics.clone();
     std::panic::set_hook(Box::new(move |info| {
         let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
             (*s).to_string()
@@ -59,12 +60,12 @@ pub fn install_panic_hook(crash_dir: Arc<OnceLock<PathBuf>>, diagnostics: Startu
         );
 
         logcat_write(true, &report);
-        diagnostics.record_error("rust_panic", &format!("{} at {}", payload, location));
+        hook_diagnostics.record_error("rust_panic", &format!("{} at {}", payload, location));
 
         if let Some(dir) = crash_dir.get() {
             let _ = std::fs::create_dir_all(dir);
             let _ = std::fs::write(dir.join("android_rust_crash.log"), &report);
-            diagnostics.persist_snapshot();
+            hook_diagnostics.persist_snapshot();
         }
     }));
     logcat_write(false, "stage:panic_hook_installed");

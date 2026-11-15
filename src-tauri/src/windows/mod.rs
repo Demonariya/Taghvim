@@ -17,6 +17,7 @@ use crate::shared::diagnostics::StartupDiagnostics;
 use crate::shared::notes::NotesManager;
 
 pub fn install_panic_hook(crash_dir: Arc<OnceLock<PathBuf>>, diagnostics: StartupDiagnostics) {
+    let hook_diagnostics = diagnostics.clone();
     std::panic::set_hook(Box::new(move |info| {
         let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
             (*s).to_string()
@@ -38,7 +39,7 @@ pub fn install_panic_hook(crash_dir: Arc<OnceLock<PathBuf>>, diagnostics: Startu
             timestamp, payload, location
         );
         eprintln!("{}", report);
-        diagnostics.record_error("rust_panic", &format!("{} at {}", payload, location));
+        hook_diagnostics.record_error("rust_panic", &format!("{} at {}", payload, location));
 
         let temp_log = std::env::temp_dir().join("taghvim_crash.log");
         let _ = std::fs::write(&temp_log, &report);
