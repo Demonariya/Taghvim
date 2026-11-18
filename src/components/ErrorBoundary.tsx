@@ -4,6 +4,7 @@
  */
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { reportBackendBootError } from '../shared/services/diagnostics.ts';
 
 interface Props {
   children: ReactNode;
@@ -38,6 +39,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (typeof window !== 'undefined' && window.__TAGHVIM_BOOT__) {
       window.__TAGHVIM_BOOT__.errors.push(`ErrorBoundary: ${error.name}: ${error.message}`);
     }
+    void reportBackendBootError('react_error_boundary', `${error.name}: ${error.message}`);
   }
 
   handleCopy = () => {

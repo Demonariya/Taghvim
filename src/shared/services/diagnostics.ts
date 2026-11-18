@@ -69,3 +69,27 @@ export async function fetchRustStartupDiagnostics(): Promise<StartupDiagnosticsR
     return null;
   }
 }
+
+export async function reportBackendBootStage(stage: string, detail?: string): Promise<void> {
+  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+    return;
+  }
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('report_frontend_boot_stage', { stage, detail: detail ?? null });
+  } catch (err) {
+    console.warn('[Diagnostics] Failed reporting frontend boot stage:', err);
+  }
+}
+
+export async function reportBackendBootError(stage: string, error: string): Promise<void> {
+  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+    return;
+  }
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('report_frontend_boot_error', { stage, error });
+  } catch (err) {
+    console.warn('[Diagnostics] Failed reporting frontend boot error:', err);
+  }
+}

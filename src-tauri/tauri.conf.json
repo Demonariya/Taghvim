@@ -33,7 +33,7 @@
         "style-src": ["'self'", "'unsafe-inline'"],
         "img-src": ["'self'", "asset:", "http://asset.localhost", "data:", "blob:"],
         "font-src": ["'self'", "data:"],
-        "connect-src": ["ipc:", "http://ipc.localhost", "https://ipc.localhost"]
+        "connect-src": ["'self'", "ipc:", "http://ipc.localhost", "https://ipc.localhost"]
       }
     }
   },
@@ -55,10 +55,5 @@
         "installMode": "currentUser"
       }
     }
-  },
-  "plugins": {
-    "autostart": {},
-    "global-shortcut": {},
-    "notification": {}
   }
 }

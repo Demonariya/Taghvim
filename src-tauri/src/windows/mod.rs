@@ -40,6 +40,7 @@ pub fn install_panic_hook(crash_dir: Arc<OnceLock<PathBuf>>, diagnostics: Startu
         );
         eprintln!("{}", report);
         hook_diagnostics.record_error("rust_panic", &format!("{} at {}", payload, location));
+        hook_diagnostics.persist_snapshot();
 
         let temp_log = std::env::temp_dir().join("taghvim_crash.log");
         let _ = std::fs::write(&temp_log, &report);
@@ -122,15 +123,17 @@ pub fn setup(
     );
     diagnostics.record_stage("reminder_watcher_spawned", None);
 
-    if let Err(e) = tray_icon::setup_system_tray(app.handle(), Arc::clone(notes_mgr)) {
+    let tray_ready = if let Err(e) = tray_icon::setup_system_tray(app.handle(), Arc::clone(notes_mgr)) {
         let msg = format!("System tray setup skipped or failed: {:?}", e);
         log::warn!("{}", msg);
         diagnostics.record_warning("system_tray_setup", &msg);
+        false
     } else {
         tray_icon::refresh_tray_icon(app.handle());
         tray_icon::spawn_midnight_watcher(app.handle().clone());
         diagnostics.record_stage("system_tray_setup", Some("Tray icon and midnight watcher active"));
-    }
+        true
+    };
 
     if let Ok(shortcut) = "Ctrl+Alt+J".parse::<Shortcut>() {
         let app_handle = app.handle().clone();
@@ -141,6 +144,7 @@ pub fn setup(
                         let _ = w.hide();
                     } else {
                         let _ = w.show();
+                        let _ = w.unminimize();
                         let _ = w.set_focus();
                     }
                 }
@@ -150,6 +154,31 @@ pub fn setup(
         } else {
             diagnostics.record_stage("global_shortcut", Some("Ctrl+Alt+J bound"));
         }
+    }
+
+    let start_minimized = std::env::args().any(|arg| arg == "--minimized");
+    if let Some(main_window) = app.get_webview_window("main") {
+        if start_minimized && tray_ready {
+            if let Err(err) = main_window.hide() {
+                diagnostics.record_warning(
+                    "main_window_minimized",
+                    &format!("Failed hiding window for --minimized launch: {:?}", err),
+                );
+            } else {
+                diagnostics.record_stage("main_window_minimized_to_tray", Some("Launched with --minimized"));
+            }
+        } else {
+            if let Err(err) = main_window.show() {
+                diagnostics.record_error("main_window_show", &format!("Failed showing main window: {:?}", err));
+            }
+            let _ = main_window.unminimize();
+            if let Err(err) = main_window.set_focus() {
+                diagnostics.record_warning("main_window_focus", &format!("Failed focusing main window: {:?}", err));
+            }
+            diagnostics.record_stage("main_window_ready", Some("Main window visible and focused"));
+        }
+    } else {
+        diagnostics.record_error("main_window_missing", "WebviewWindow 'main' was not created");
     }
 
     diagnostics.persist_snapshot();

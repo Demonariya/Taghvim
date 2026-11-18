@@ -22,6 +22,7 @@ pub struct StartupStage {
 #[serde(rename_all = "camelCase")]
 pub struct StartupDiagnosticsReport {
     pub platform: String,
+    pub last_completed_stage: Option<String>,
     pub stages: Vec<StartupStage>,
     pub errors: Vec<String>,
     pub app_data_dir: Option<String>,
@@ -37,6 +38,14 @@ struct DiagnosticsInner {
     stages: Vec<StartupStage>,
     errors: Vec<String>,
     app_data_dir: Option<PathBuf>,
+}
+
+fn fallback_diagnostics_dir() -> PathBuf {
+    if let Some(app_data) = std::env::var_os("APPDATA") {
+        PathBuf::from(app_data).join("com.taghvim.calendar")
+    } else {
+        std::env::temp_dir().join("com.taghvim.calendar")
+    }
 }
 
 impl StartupDiagnostics {
@@ -97,17 +106,27 @@ impl StartupDiagnostics {
 
     pub fn report(&self) -> StartupDiagnosticsReport {
         match self.inner.lock() {
-            Ok(guard) => StartupDiagnosticsReport {
-                platform: guard.platform.clone(),
-                stages: guard.stages.clone(),
-                errors: guard.errors.clone(),
-                app_data_dir: guard
-                    .app_data_dir
-                    .as_ref()
-                    .map(|p| p.to_string_lossy().into_owned()),
-            },
+            Ok(guard) => {
+                let last_completed_stage = guard
+                    .stages
+                    .iter()
+                    .rev()
+                    .find(|s| s.status == "ok")
+                    .map(|s| s.stage.clone());
+                StartupDiagnosticsReport {
+                    platform: guard.platform.clone(),
+                    last_completed_stage,
+                    stages: guard.stages.clone(),
+                    errors: guard.errors.clone(),
+                    app_data_dir: guard
+                        .app_data_dir
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().into_owned()),
+                }
+            }
             Err(_) => StartupDiagnosticsReport {
                 platform: "unknown".to_string(),
+                last_completed_stage: None,
                 stages: Vec::new(),
                 errors: vec!["Diagnostics mutex poisoned".to_string()],
                 app_data_dir: None,
@@ -117,15 +136,18 @@ impl StartupDiagnostics {
 
     pub fn persist_snapshot(&self) {
         let report = self.report();
-        let dir_opt = self
+        let target_dir = self
             .inner
             .lock()
             .ok()
-            .and_then(|g| g.app_data_dir.clone());
-        if let Some(dir) = dir_opt {
-            let _ = fs::create_dir_all(&dir);
-            if let Ok(json) = serde_json::to_string_pretty(&report) {
-                let _ = fs::write(dir.join("startup_diagnostics.json"), json);
+            .and_then(|g| g.app_data_dir.clone())
+            .unwrap_or_else(fallback_diagnostics_dir);
+
+        if let Ok(json) = serde_json::to_string_pretty(&report) {
+            let _ = fs::create_dir_all(&target_dir);
+            if fs::write(target_dir.join("startup_diagnostics.json"), &json).is_err() {
+                let temp_path = std::env::temp_dir().join("taghvim_startup_diagnostics.json");
+                let _ = fs::write(temp_path, &json);
             }
         }
     }

@@ -120,3 +120,27 @@ pub fn convert_date(
 pub fn get_startup_diagnostics(state: State<AppState>) -> Result<StartupDiagnosticsReport, String> {
     Ok(state.diagnostics.report())
 }
+
+#[tauri::command]
+pub fn report_frontend_boot_stage(
+    state: State<AppState>,
+    stage: String,
+    detail: Option<String>,
+) -> Result<(), String> {
+    state
+        .diagnostics
+        .record_stage(&stage, detail.as_deref());
+    state.diagnostics.persist_snapshot();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn report_frontend_boot_error(
+    state: State<AppState>,
+    stage: String,
+    error: String,
+) -> Result<(), String> {
+    state.diagnostics.record_error(&stage, &error);
+    state.diagnostics.persist_snapshot();
+    Ok(())
+}

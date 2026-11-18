@@ -5,12 +5,17 @@
 
 import { useEffect } from 'react';
 import { WindowsShell } from './platform/windows/WindowsShell.tsx';
-import { markReactMounted, recordFrontendStage } from './shared/services/diagnostics.ts';
+import {
+  markReactMounted,
+  recordFrontendStage,
+  reportBackendBootStage,
+} from './shared/services/diagnostics.ts';
 
 export default function App() {
   useEffect(() => {
     markReactMounted();
     recordFrontendStage('app_shell_mounted');
+    void reportBackendBootStage('frontend_react_mounted', window.location.hash || 'main');
   }, []);
 
   return <WindowsShell />;

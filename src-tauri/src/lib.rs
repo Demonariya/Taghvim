@@ -8,11 +8,13 @@ mod windows;
 
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
+use tauri::webview::PageLoadEvent;
 use tauri::Manager;
 
 use shared::commands::{
     convert_date, delete_note, get_month_events, get_notes, get_settings,
-    get_startup_diagnostics, save_note, save_settings, AppState,
+    get_startup_diagnostics, report_frontend_boot_error, report_frontend_boot_stage, save_note,
+    save_settings, AppState,
 };
 use shared::diagnostics::StartupDiagnostics;
 use shared::notes::NotesManager;
@@ -28,6 +30,10 @@ pub fn run() {
 
     let setup_diagnostics = diagnostics.clone();
     let setup_crash_dir = Arc::clone(&crash_dir);
+    let page_load_diagnostics = diagnostics.clone();
+
+    diagnostics.record_stage("tauri_builder_running", None);
+    diagnostics.persist_snapshot();
 
     let result = builder
         .setup(move |app| {
@@ -54,6 +60,15 @@ pub fn run() {
 
             Ok(())
         })
+        .on_page_load(move |webview, payload| {
+            let detail = format!("{}: {}", webview.label(), payload.url());
+            if let PageLoadEvent::Started = payload.event() {
+                page_load_diagnostics.record_stage("webview_page_load_started", Some(&detail));
+            } else if let PageLoadEvent::Finished = payload.event() {
+                page_load_diagnostics.record_stage("webview_page_load_finished", Some(&detail));
+                page_load_diagnostics.persist_snapshot();
+            }
+        })
         .on_window_event(|window, event| {
             windows::handle_window_event(window, event);
         })
@@ -66,6 +81,8 @@ pub fn run() {
             save_settings,
             convert_date,
             get_startup_diagnostics,
+            report_frontend_boot_stage,
+            report_frontend_boot_error,
             windows::commands::minimize_window,
             windows::commands::toggle_maximize_window,
             windows::commands::hide_to_tray,

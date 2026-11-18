@@ -172,6 +172,43 @@ jobs:
             $failed = $true
           }
 
+          # 7. Verify Tauri Rust & npm minor version parity and ensure no invalid unit-plugin maps exist
+          node -e '
+            const fs = require("fs");
+            const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+            const cargo = fs.readFileSync("src-tauri/Cargo.toml", "utf8");
+            const conf = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+
+            for (const unitPlugin of ["autostart", "global-shortcut", "notification"]) {
+              if (conf.plugins && conf.plugins[unitPlugin] !== undefined) {
+                console.error(`::error::tauri.conf.json must not define plugins.${unitPlugin} (expected unit config).`);
+                process.exit(1);
+              }
+            }
+
+            const pairs = [
+              ["tauri", "node_modules/@tauri-apps/api"],
+              ["tauri-plugin-autostart", "node_modules/@tauri-apps/plugin-autostart"],
+              ["tauri-plugin-global-shortcut", "node_modules/@tauri-apps/plugin-global-shortcut"],
+              ["tauri-plugin-notification", "node_modules/@tauri-apps/plugin-notification"]
+            ];
+
+            for (const [crate, npmPkg] of pairs) {
+              const m = cargo.match(new RegExp(`^${crate}\\s*=\\s*(?:"[~^=]?([0-9]+\\.[0-9]+)|\\{[^}]*version\\s*=\\s*"[~^=]?([0-9]+\\.[0-9]+))`, "m"));
+              const rustMinor = m ? (m[1] || m[2]) : null;
+              const npmVer = lock.packages?.[npmPkg]?.version || "";
+              const npmMinor = npmVer.split(".").slice(0, 2).join(".");
+              if (!rustMinor || rustMinor !== npmMinor) {
+                console.error(`::error::Tauri minor version mismatch: ${crate} (${rustMinor}) vs ${npmPkg} (${npmVer})`);
+                process.exit(1);
+              }
+              console.log(`Aligned: ${crate} (${rustMinor}.x) <-> ${npmPkg} (${npmVer})`);
+            }
+          '
+          if ($LASTEXITCODE -ne 0) {
+            $failed = $true
+          }
+
           if ($failed) {
             exit 1
           }
@@ -264,7 +301,7 @@ jobs:
 
             Portable build needs Microsoft WebView2 Runtime; use the installer if the app does not open.
           tauriScript: npm run tauri
-          args: --bundles nsis --ignore-version-mismatches
+          args: --bundles nsis
 
       - name: Prepare and attach portable executable
         shell: pwsh
@@ -300,6 +337,105 @@ jobs:
           Write-Host "Attaching $portableDst to GitHub Release $($env:TAG)..."
           gh release upload $env:TAG $portableDst --clobber
 
+      - name: Windows runtime smoke test (NSIS install + launched exe + portable exe)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          function Test-TaghvimLaunch {
+            param(
+              [string]$ExePath,
+              [string]$ModeLabel
+            )
+
+            $appDataDir = Join-Path $env:APPDATA "com.taghvim.calendar"
+            $crashLog = Join-Path $appDataDir "crash.log"
+            $tempCrashLog = Join-Path $env:TEMP "taghvim_crash.log"
+            $diagFile = Join-Path $appDataDir "startup_diagnostics.json"
+
+            Remove-Item -Path $crashLog, $tempCrashLog, $diagFile -Force -ErrorAction SilentlyContinue
+
+            Write-Host "=== Launching $ModeLabel: $ExePath ==="
+            $proc = Start-Process -FilePath $ExePath -PassThru
+            Start-Sleep -Seconds 7
+
+            if ($proc.HasExited) {
+              Write-Host "::error::$ModeLabel exited prematurely with code $($proc.ExitCode)"
+              if (Test-Path $tempCrashLog) { Get-Content $tempCrashLog }
+              if (Test-Path $crashLog) { Get-Content $crashLog }
+              if (Test-Path $diagFile) { Get-Content $diagFile }
+              exit 1
+            }
+
+            try {
+              if ((Test-Path $tempCrashLog) -or (Test-Path $crashLog)) {
+                Write-Host "::error::$ModeLabel generated a crash log despite staying open!"
+                if (Test-Path $tempCrashLog) { Get-Content $tempCrashLog }
+                if (Test-Path $crashLog) { Get-Content $crashLog }
+                exit 1
+              }
+
+              if (-not (Test-Path $diagFile)) {
+                Write-Host "::error::$ModeLabel did not produce startup_diagnostics.json at $diagFile"
+                exit 1
+              }
+
+              $diag = Get-Content -Raw $diagFile | ConvertFrom-Json
+              Write-Host "$ModeLabel startup diagnostics (lastCompletedStage=$($diag.lastCompletedStage)):"
+              Get-Content $diagFile
+
+              if ($diag.errors -and $diag.errors.Count -gt 0) {
+                Write-Host "::error::$ModeLabel recorded startup errors: $($diag.errors -join '; ')"
+                exit 1
+              }
+
+              $stageNames = @($diag.stages | ForEach-Object { $_.stage })
+              foreach ($req in @("setup_started", "main_window_ready", "app_state_managed")) {
+                if ($stageNames -notcontains $req) {
+                  Write-Host "::error::$ModeLabel missing required startup stage '$req'. Stages seen: $($stageNames -join ', ')"
+                  exit 1
+                }
+              }
+
+              Write-Host "Runtime smoke test PASSED for $ModeLabel (process alive, main_window_ready verified, 0 startup errors)."
+            } finally {
+              if (-not $proc.HasExited) {
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 1
+              }
+            }
+          }
+
+          $nsisSetup = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          if (-not $nsisSetup) {
+            throw "NSIS installer not found."
+          }
+
+          Write-Host "Installing NSIS package silently: $($nsisSetup.FullName)"
+          $installProc = Start-Process -FilePath $nsisSetup.FullName -ArgumentList "/S" -Wait -PassThru
+          if ($installProc.ExitCode -ne 0) {
+            throw "NSIS silent install failed with exit code $($installProc.ExitCode)"
+          }
+
+          $installedExe = Join-Path $env:LOCALAPPDATA "Taghvim\taghvim.exe"
+          if (-not (Test-Path $installedExe)) {
+            $fallbackExe = Get-ChildItem -Path $env:LOCALAPPDATA -Filter "taghvim.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($fallbackExe) {
+              $installedExe = $fallbackExe.FullName
+            } else {
+              throw "Installed executable not found under $env:LOCALAPPDATA after NSIS install."
+            }
+          }
+          Write-Host "Installation verified at: $installedExe"
+
+          Test-TaghvimLaunch -ExePath $installedExe -ModeLabel "Installed NSIS App"
+
+          $portableExe = Get-ChildItem -Path "Taghvim_*_x64-portable.exe" | Select-Object -First 1
+          if (-not $portableExe) {
+            throw "Portable executable not found."
+          }
+          Test-TaghvimLaunch -ExePath $portableExe.FullName -ModeLabel "Portable Executable"
+
       - name: Upload artifacts (NSIS installer & portable exe)
         uses: actions/upload-artifact@v6
         with:
@@ -318,5 +454,11 @@ jobs:
           Write-Host "npm version: $(npm -v)"
           Write-Host "rustc version: $(rustc -V)"
           Write-Host "cargo version: $(cargo -V)"
+          $tempCrash = Join-Path $env:TEMP "taghvim_crash.log"
+          $appCrash = Join-Path $env:APPDATA "com.taghvim.calendar\crash.log"
+          $diagFile = Join-Path $env:APPDATA "com.taghvim.calendar\startup_diagnostics.json"
+          if (Test-Path $tempCrash) { Write-Host "=== TEMP crash.log ==="; Get-Content $tempCrash }
+          if (Test-Path $appCrash) { Write-Host "=== APPDATA crash.log ==="; Get-Content $appCrash }
+          if (Test-Path $diagFile) { Write-Host "=== startup_diagnostics.json ==="; Get-Content $diagFile }
           Write-Host "=== npm dependencies (depth=0, top 40 lines) ==="
           npm ls --depth=0 2>&1 | Select-Object -First 40

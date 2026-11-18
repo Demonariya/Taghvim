@@ -91,6 +91,7 @@ export interface StartupStage {
 
 export interface StartupDiagnosticsReport {
   platform: string;
+  lastCompletedStage?: string | null;
   stages: StartupStage[];
   errors: string[];
   appDataDir?: string;
