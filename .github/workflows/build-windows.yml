@@ -376,7 +376,7 @@ jobs:
 
             Remove-Item -Path $crashLog, $tempCrashLog, $diagFile, $tempDiagFile -Force -ErrorAction SilentlyContinue
 
-            Write-Host "=== Launching $ModeLabel: $ExePath ==="
+            Write-Host "=== Launching ${ModeLabel}: $ExePath ==="
             $proc = Start-Process -FilePath $ExePath -PassThru
             Start-Sleep -Seconds 7
 
