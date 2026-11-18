@@ -6,8 +6,6 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
-    "build:android": "vite build --mode android",
-    "build:windows": "vite build --mode windows",
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "tsx --test src/shared/utils/persianDate.test.ts",

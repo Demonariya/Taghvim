@@ -79,8 +79,7 @@ jobs:
             }
           }
           $tauriConf = Get-Content -Raw "src-tauri/tauri.conf.json" | ConvertFrom-Json
-          $winConf = Get-Content -Raw "src-tauri/tauri.windows.conf.json" | ConvertFrom-Json
-          $buildCmds = @($tauriConf.build.beforeBuildCommand, $tauriConf.build.beforeDevCommand, $winConf.build.beforeBuildCommand, $winConf.build.beforeDevCommand)
+          $buildCmds = @($tauriConf.build.beforeBuildCommand, $tauriConf.build.beforeDevCommand)
           foreach ($cmd in $buildCmds) {
             if ($cmd) {
               foreach ($tool in $forbiddenTools) {
@@ -225,9 +224,9 @@ jobs:
         run: npm test
 
       - name: Windows frontend build check
-        run: npm run build:windows
+        run: npm run build
 
-      - name: Run Rust unit tests (Windows & shared modules)
+      - name: Run Rust unit tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
 
       - name: Run Windows Clippy check

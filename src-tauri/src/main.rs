@@ -2,6 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    #[cfg(any(target_os = "android", target_os = "windows"))]
     taghvim_lib::run();
 }

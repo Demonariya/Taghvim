@@ -173,12 +173,10 @@ impl NotesManager {
         Ok(())
     }
 
-    #[cfg(target_os = "windows")]
     pub fn notes_arc(&self) -> Arc<Mutex<Vec<PersonalNote>>> {
         Arc::clone(&self.notes)
     }
 
-    #[cfg(target_os = "windows")]
     pub fn settings_arc(&self) -> Arc<Mutex<AppSettings>> {
         Arc::clone(&self.settings)
     }

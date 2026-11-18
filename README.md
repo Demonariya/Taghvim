@@ -1,97 +1,67 @@
 # Taghvim (تقویم) — v0.0.1
 
-Cross-platform Persian (Jalali / Solar Hijri) calendar built with **Tauri 2**, **Rust**, **React 19**, **TypeScript**, **Vite 8**, and **Tailwind CSS 4**, targeting **Windows Desktop** (NSIS installer + portable `.exe`) and **Android** (universal APK for `arm64-v8a`, `armeabi-v7a`, and `x86_64`).
+Windows desktop Persian (Jalali / Solar Hijri) calendar built with **Tauri 2**, **Rust**, **React 19**, **TypeScript**, **Vite 8**, and **Tailwind CSS 4**.
 
 ---
 
-## Architecture: `shared` / `android` / `windows` Separation
+## Features
 
-The codebase enforces strict target isolation across Rust, TypeScript, Tauri configuration, capabilities, and CI/CD pipelines so neither platform compiles or bundles the other's native dependencies or desktop/mobile runtime code.
-
-### 1. Rust Backend (`src-tauri/src/`)
-
-| Layer | Location | Responsibilities |
-| :--- | :--- | :--- |
-| **`shared`** | `src-tauri/src/shared/` | Pure Jalali/Gregorian/Hijri calendar conversion & fallback holidays (`calendar.rs`), thread-safe JSON notes & settings persistence (`notes.rs`), `time.ir` scraper with 24h disk cache (`scraper.rs`), cross-platform Tauri commands (`commands.rs`), and persistent startup stage diagnostics (`diagnostics.rs`). |
-| **`android`** | `src-tauri/src/android/` | Direct NDK `liblog` FFI (`__android_log_write` under tag `TaghvimRust`), Android crash & panic hook (`android_rust_crash.log`), Android-safe storage directory resolution (`app_data_dir` -> `app_cache_dir` -> `temp_dir`), and mobile plugin setup (`log`, `notification`). |
-| **`windows`** | `src-tauri/src/windows/` | Windows crash hook (`%TEMP%\taghvim_crash.log` & `%APPDATA%\com.taghvim.calendar\crash.log`), desktop window commands (`commands.rs`), dynamic `fontdue` tray icon renderer & `#/tray` popup (`tray_icon.rs`), background reminder watcher (`reminders.rs`), autostart, and `Ctrl+Alt+J` global shortcut. |
-
-- **`src-tauri/Cargo.toml`**: Desktop-only crates (`tauri` `tray-icon` + `image-png` features, `tauri-plugin-autostart`, `tauri-plugin-global-shortcut`, `fontdue`) live exclusively under `[target.'cfg(target_os = "windows")'.dependencies]`.
-- **Tauri Configs & Capabilities**:
-  - `src-tauri/tauri.conf.json`: Shared metadata, CSP, bundle icons, and notification plugin.
-  - `src-tauri/tauri.windows.conf.json`: Windows `beforeBuildCommand` (`npm run build:windows`), `390x780` frameless window, NSIS/WebView2 bootstrapper config, `autostart` and `global-shortcut` plugins.
-  - `src-tauri/tauri.android.conf.json`: Android `beforeBuildCommand` (`npm run build:android`), clean main window, `minSdkVersion: 24`.
-  - `src-tauri/capabilities/desktop.json` (`platforms: ["windows"]`) and `src-tauri/capabilities/mobile.json` (`platforms: ["android"]`).
-
-### 2. Frontend (`src/`)
-
-| Layer | Location | Responsibilities |
-| :--- | :--- | :--- |
-| **`shared`** | `src/shared/` | `types/calendar.ts`, `utils/persianDate.ts` (+ unit tests), `services/calendarGrid.ts`, `services/storageService.ts` (Tauri IPC + browser fallback), `services/diagnostics.ts`, and `hooks/useTaghvimApp.ts`. |
-| **`components`** | `src/components/` | Pure UI views (`Header`, `MonthGrid`, `DayCell`, `BottomActionBar`, `DayDetailModal`, `DateConverter`, `NotesReminders`, `SettingsModal`, `ErrorBoundary`) importing only from `src/shared/`. |
-| **`android`** | `src/platform/android/` | `AndroidShell.tsx`, `AndroidSettingsSection.tsx`, `adapter.ts` (WebView version check & notification permissions), and `android.css` (safe-area insets, `48px` touch targets, bottom sheets). |
-| **`windows`** | `src/platform/windows/` | `WindowsShell.tsx`, `WindowsSettingsSection.tsx`, `TitleBar.tsx`, `TrayPopupView.tsx`, and `adapter.ts` (window controls, autostart sync, tray events). |
-| **Platform Selector** | `src/platform/index.ts` | Uses Vite `--mode android` / `--mode windows` at build time so each platform build excludes the other shell, with UA fallback during local web development. |
-
-### 3. Android Native Overlay (`src-tauri/android/` & `scripts/configure-android.mjs`)
-
-- `src-tauri/android/MainActivity.kt`: Installs an uncaught exception handler writing to `TaghvimStartup` Logcat and `filesDir/android_crash.log`, logs SDK/ABI/WebView metadata, guards `enableEdgeToEdge()`, and displays a readable native error view on `UnsatisfiedLinkError` or startup failure instead of exiting silently.
-- `src-tauri/android/proguard-rules.pro`: Keep rules for `app.tauri.**`, `com.plugin.**`, `com.taghvim.**`, `androidx.activity.**`, `androidx.webkit.**`, `kotlin.Metadata`, and JNI `native` methods.
-- `scripts/configure-android.mjs`: Executed automatically after `tauri android init --ci` to patch `AndroidManifest.xml` (`INTERNET`, `ACCESS_NETWORK_STATE`, `POST_NOTIFICATIONS`, `android:roundIcon`, `android:extractNativeLibs="true"`), sync adaptive icons from `src-tauri/icons/android/`, remove the default green template background, install `MainActivity.kt` and `proguard-rules.pro`, and disable R8 release shrinking/obfuscation in both AGP 8 (`isMinifyEnabled = false`) and AGP 9 (`optimization { enable = false }`).
+- **Jalali, Gregorian & Hijri Calendar**: Full Persian calendar grid with secondary Gregorian and Hijri dates, RTL layout, and `Digikala New` typography.
+- **Official Events (`time.ir`) + Offline Fallback**: Scrapes monthly Iranian events from `time.ir` with a 24-hour disk cache and built-in statutory holiday fallback.
+- **Three-Way Date Converter**: Instant conversion between Jalali, Gregorian, and Lunar Hijri dates.
+- **Notes & Desktop Notifications**: Persistent local notes/reminders checked in the background every 30 seconds with native Windows toast notifications.
+- **Dynamic Windows System Tray**: Renders today's Jalali day number dynamically via `fontdue` on the tray icon, updates at midnight, includes a quick tray popup (`#/tray`), global toggle shortcut (`Ctrl+Alt+J`), and Windows autostart support.
 
 ---
 
-## Build & Release Instructions
+## Project Architecture
 
-### Prerequisites
-- **Node.js 20+** and **npm** (do not delete `package-lock.json` or use `bun`/`pnpm`/`yarn`)
-- **Rust stable** + `clippy`
-- **Windows builds**: `x86_64-pc-windows-msvc` target + MSVC Build Tools + WebView2 Runtime
-- **Android builds**: Java 17 (Temurin), Android SDK (`platform-tools`, `platforms;android-34+`, `build-tools`), Android NDK, and Rust targets `aarch64-linux-android`, `armv7-linux-androideabi`, `x86_64-linux-android`
+### Rust Backend (`src-tauri/src/`)
 
-### Local Commands
+- `shared/`: Cross-platform calendar math (`calendar.rs`), JSON notes and settings persistence (`notes.rs`), `time.ir` scraper and 24h cache (`scraper.rs`), Tauri commands (`commands.rs`), and startup diagnostics (`diagnostics.rs`).
+- `windows/`: Windows panic/crash hook (`%TEMP%\taghvim_crash.log` and `%APPDATA%\com.taghvim.calendar\crash.log`), desktop window controls (`commands.rs`), `fontdue` tray icon renderer and `#/tray` popup (`tray_icon.rs`), background reminder watcher (`reminders.rs`), autostart, and global shortcut (`mod.rs`).
+
+### Frontend (`src/`)
+
+- `src/shared/`: Types (`types/calendar.ts`), date helpers & unit tests (`utils/persianDate.ts`, `utils/persianDate.test.ts`), calendar grid builder & converter (`services/calendarGrid.ts`), Tauri IPC + browser fallback storage (`services/storageService.ts`), diagnostics (`services/diagnostics.ts`), and app state hook (`hooks/useTaghvimApp.ts`).
+- `src/components/`: UI views (`Header`, `MonthGrid`, `DayCell`, `BottomActionBar`, `DayDetailModal`, `DateConverter`, `NotesReminders`, `SettingsModal`, `ErrorBoundary`).
+- `src/platform/windows/`: Desktop shell (`WindowsShell.tsx`), custom frameless title bar (`TitleBar.tsx`), tray popup (`TrayPopupView.tsx`), Windows settings (`WindowsSettingsSection.tsx`), and native desktop bridge (`adapter.ts`).
+
+---
+
+## Windows Development & Build
+
+### Prerequisites (Windows x64)
+
+- **Node.js 20+** and **npm** (uses committed `package-lock.json` only)
+- **Rust stable** (`x86_64-pc-windows-msvc`) with `clippy`
+- **Microsoft Visual Studio C++ Build Tools** (MSVC v143 + Windows SDK)
+- **Microsoft Edge WebView2 Runtime** (bundled via NSIS `embedBootstrapper` for end users)
+
+### Commands
 
 ```bash
 # Install exact dependencies
 npm ci
 
-# Typecheck and run calendar unit tests
+# Typecheck and run frontend unit tests
 npx tsc --noEmit
 npm test
 
-# Build frontend per target mode
-npm run build:android
-npm run build:windows
+# Start local development server or full Tauri desktop dev mode
+npm run dev
+npm run tauri dev
 
-# Run Rust tests and platform-specific Clippy checks
+# Run Rust tests and Clippy checks
 cargo test --manifest-path src-tauri/Cargo.toml --lib
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings               # Windows host
-cargo clippy --manifest-path src-tauri/Cargo.toml --target aarch64-linux-android --lib -- -D warnings
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
-# Generate and configure Android Gradle project, then build APK
-npm run tauri android init -- --ci
-node scripts/configure-android.mjs
-npm run tauri android build -- --apk --target aarch64 --target armv7 --target x86_64 --ignore-version-mismatches
+# Build production Windows executable & NSIS installer
+npm run build
+npm run tauri build -- --bundles nsis --ignore-version-mismatches
 ```
 
-### CI/CD Pipelines
-- **Android**: `.github/workflows/build-android.yml` — runs preflight checks, TypeScript/test/Clippy checks, configures the Android project via `scripts/configure-android.mjs`, aligns (`zipalign`) before signing (`apksigner`), verifies ABIs/permissions/adaptive icon XML/Pillow pixel match, and includes a KVM-guarded emulator boot verification job (`verify-android-emulator`).
-- **Windows**: `.github/workflows/build-windows.yml` — runs preflight checks (including multi-resolution `icon.ico`), TypeScript/test/Clippy checks, and produces both the NSIS installer and `Taghvim_0.0.1_x64-portable.exe`.
+### Build Outputs & CI/CD
 
----
-
-## Android Diagnostics & Debugging
-
-1. **Logcat Filters**:
-   ```bash
-   adb logcat -s TaghvimStartup TaghvimRust AndroidRuntime Chromium
-   ```
-   - `TaghvimStartup`: Kotlin `MainActivity` lifecycle stages, `WebView.getCurrentWebViewPackage()`, and uncaught Java/Kotlin exceptions.
-   - `TaghvimRust`: Direct NDK `liblog` output for Rust initialization stages and panic payloads.
-2. **Persistent Crash & Stage Files** (inside app private files/data directory):
-   - `android_crash.log` (Kotlin uncaught exceptions)
-   - `android_rust_crash.log` (Rust panic payload & source location)
-   - `startup_diagnostics.json` (ordered startup stages and warnings)
-3. **In-App Diagnostics**:
-   - `index.html` embeds an ES5-safe boot watchdog (`window.__TAGHVIM_BOOT__`) that shows a diagnostic screen if React fails to mount within 6 seconds or throws during module load.
-   - Open **تنظیمات (Settings) -> گزارش عیب‌یابی راه‌اندازی اندروید** to inspect WebView major version, JS boot trace, and Rust startup stages live on-device.
+- **GitHub Actions Workflow**: `.github/workflows/build-windows.yml` runs preflight checks (lockfile, `icon.ico` multi-resolution check, font check, version alignment), TypeScript typecheck, unit tests, `npm run build`, `cargo test`, `cargo clippy -- -D warnings`, builds the NSIS installer, packages `Taghvim_<version>_x64-portable.exe`, and attaches both artifacts to the draft GitHub release.
+- **Diagnostics**: Startup crash logs on Windows are written to `%TEMP%\taghvim_crash.log` and `%APPDATA%\com.taghvim.calendar\crash.log`, alongside `startup_diagnostics.json` in `%APPDATA%\com.taghvim.calendar\`.

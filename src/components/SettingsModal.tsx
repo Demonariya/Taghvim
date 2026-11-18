@@ -207,7 +207,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </label>
           </div>
 
-          {/* Platform-specific settings section (Android or Windows) */}
+          {/* Windows-specific settings section */}
           {platformSection}
 
           {/* App Info footer */}
