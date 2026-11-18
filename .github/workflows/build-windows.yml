@@ -342,18 +342,39 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
+          $wv2Paths = @(
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+            "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+          )
+          $wv2Ver = $null
+          foreach ($p in $wv2Paths) {
+            if (Test-Path $p) {
+              $wv2Ver = (Get-ItemProperty $p -ErrorAction SilentlyContinue).pv
+              if ($wv2Ver) { break }
+            }
+          }
+          Write-Host "WebView2 Runtime detected: $(if ($wv2Ver) { $wv2Ver } else { 'not found in registry (NSIS embedBootstrapper will handle if needed)' })"
+
+          function Stop-AllTaghvim {
+            Get-Process -Name "taghvim" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 500
+          }
+
           function Test-TaghvimLaunch {
             param(
               [string]$ExePath,
               [string]$ModeLabel
             )
 
+            Stop-AllTaghvim
+
             $appDataDir = Join-Path $env:APPDATA "com.taghvim.calendar"
             $crashLog = Join-Path $appDataDir "crash.log"
             $tempCrashLog = Join-Path $env:TEMP "taghvim_crash.log"
             $diagFile = Join-Path $appDataDir "startup_diagnostics.json"
+            $tempDiagFile = Join-Path $env:TEMP "taghvim_startup_diagnostics.json"
 
-            Remove-Item -Path $crashLog, $tempCrashLog, $diagFile -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $crashLog, $tempCrashLog, $diagFile, $tempDiagFile -Force -ErrorAction SilentlyContinue
 
             Write-Host "=== Launching $ModeLabel: $ExePath ==="
             $proc = Start-Process -FilePath $ExePath -PassThru
@@ -364,6 +385,7 @@ jobs:
               if (Test-Path $tempCrashLog) { Get-Content $tempCrashLog }
               if (Test-Path $crashLog) { Get-Content $crashLog }
               if (Test-Path $diagFile) { Get-Content $diagFile }
+              if (Test-Path $tempDiagFile) { Get-Content $tempDiagFile }
               exit 1
             }
 
@@ -375,14 +397,19 @@ jobs:
                 exit 1
               }
 
-              if (-not (Test-Path $diagFile)) {
-                Write-Host "::error::$ModeLabel did not produce startup_diagnostics.json at $diagFile"
+              $resolvedDiag = if (Test-Path $diagFile) { $diagFile } elseif (Test-Path $tempDiagFile) { $tempDiagFile } else { $null }
+              if (-not $resolvedDiag) {
+                Write-Host "::error::$ModeLabel did not produce startup_diagnostics.json at $diagFile or $tempDiagFile"
                 exit 1
               }
 
-              $diag = Get-Content -Raw $diagFile | ConvertFrom-Json
+              $diag = Get-Content -Raw $resolvedDiag | ConvertFrom-Json
               Write-Host "$ModeLabel startup diagnostics (lastCompletedStage=$($diag.lastCompletedStage)):"
-              Get-Content $diagFile
+              Get-Content $resolvedDiag
+
+              if ($diag.warnings -and $diag.warnings.Count -gt 0) {
+                Write-Host "::warning::$ModeLabel startup warnings: $($diag.warnings -join '; ')"
+              }
 
               if ($diag.errors -and $diag.errors.Count -gt 0) {
                 Write-Host "::error::$ModeLabel recorded startup errors: $($diag.errors -join '; ')"
@@ -399,10 +426,7 @@ jobs:
 
               Write-Host "Runtime smoke test PASSED for $ModeLabel (process alive, main_window_ready verified, 0 startup errors)."
             } finally {
-              if (-not $proc.HasExited) {
-                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-                Start-Sleep -Seconds 1
-              }
+              Stop-AllTaghvim
             }
           }
 
@@ -412,7 +436,11 @@ jobs:
           }
 
           Write-Host "Installing NSIS package silently: $($nsisSetup.FullName)"
-          $installProc = Start-Process -FilePath $nsisSetup.FullName -ArgumentList "/S" -Wait -PassThru
+          $installProc = Start-Process -FilePath $nsisSetup.FullName -ArgumentList "/S" -PassThru
+          if (-not $installProc.WaitForExit(120000)) {
+            Stop-Process -Id $installProc.Id -Force -ErrorAction SilentlyContinue
+            throw "NSIS silent install timed out after 120 seconds."
+          }
           if ($installProc.ExitCode -ne 0) {
             throw "NSIS silent install failed with exit code $($installProc.ExitCode)"
           }

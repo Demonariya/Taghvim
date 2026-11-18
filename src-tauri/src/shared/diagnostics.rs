@@ -24,6 +24,7 @@ pub struct StartupDiagnosticsReport {
     pub platform: String,
     pub last_completed_stage: Option<String>,
     pub stages: Vec<StartupStage>,
+    pub warnings: Vec<String>,
     pub errors: Vec<String>,
     pub app_data_dir: Option<String>,
 }
@@ -36,6 +37,7 @@ pub struct StartupDiagnostics {
 struct DiagnosticsInner {
     platform: String,
     stages: Vec<StartupStage>,
+    warnings: Vec<String>,
     errors: Vec<String>,
     app_data_dir: Option<PathBuf>,
 }
@@ -54,6 +56,7 @@ impl StartupDiagnostics {
             inner: Arc::new(Mutex::new(DiagnosticsInner {
                 platform: platform.to_string(),
                 stages: Vec::new(),
+                warnings: Vec::new(),
                 errors: Vec::new(),
                 app_data_dir: None,
             })),
@@ -81,7 +84,7 @@ impl StartupDiagnostics {
         };
         if let Ok(mut guard) = self.inner.lock() {
             guard.stages.push(entry);
-            guard.errors.push(format!("[warn:{}] {}", stage, detail));
+            guard.warnings.push(format!("[warn:{}] {}", stage, detail));
         }
     }
 
@@ -117,6 +120,7 @@ impl StartupDiagnostics {
                     platform: guard.platform.clone(),
                     last_completed_stage,
                     stages: guard.stages.clone(),
+                    warnings: guard.warnings.clone(),
                     errors: guard.errors.clone(),
                     app_data_dir: guard
                         .app_data_dir
@@ -128,6 +132,7 @@ impl StartupDiagnostics {
                 platform: "unknown".to_string(),
                 last_completed_stage: None,
                 stages: Vec::new(),
+                warnings: Vec::new(),
                 errors: vec!["Diagnostics mutex poisoned".to_string()],
                 app_data_dir: None,
             },
