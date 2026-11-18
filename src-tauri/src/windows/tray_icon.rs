@@ -337,7 +337,9 @@ pub fn setup_system_tray(
         }
     };
 
-    let _ = tray;
+    if let Some(t) = tray {
+        app.manage(t);
+    }
     Ok(())
 }
 

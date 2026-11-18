@@ -33,6 +33,24 @@ const STORAGE_KEYS = {
   EVENTS_CACHE_PREFIX: 'taghvim_events_',
 };
 
+function safeStorageGet(key: string): string | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeStorageSet(key: string, value: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // Ignore storage quota or restricted iframe security errors
+  }
+}
+
 async function callTauri<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (isTauri()) {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -69,7 +87,7 @@ export async function getMonthEvents(
   }
 
   const cacheKey = `${STORAGE_KEYS.EVENTS_CACHE_PREFIX}${year}_${month}`;
-  const cached = localStorage.getItem(cacheKey);
+  const cached = safeStorageGet(cacheKey);
 
   if (cached && !forceRefresh) {
     try {
@@ -93,7 +111,7 @@ export async function getMonthEvents(
     lastError: undefined,
   };
 
-  localStorage.setItem(cacheKey, JSON.stringify(result));
+  safeStorageSet(cacheKey, JSON.stringify(result));
   return result;
 }
 
@@ -106,7 +124,7 @@ export async function getNotes(): Promise<PersonalNote[]> {
     }
   }
 
-  const raw = localStorage.getItem(STORAGE_KEYS.NOTES);
+  const raw = safeStorageGet(STORAGE_KEYS.NOTES);
   if (!raw) return [];
   try {
     return JSON.parse(raw);
@@ -131,7 +149,7 @@ export async function saveNote(note: PersonalNote): Promise<PersonalNote[]> {
   } else {
     notes.push(note);
   }
-  localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(notes));
+  safeStorageSet(STORAGE_KEYS.NOTES, JSON.stringify(notes));
   return notes;
 }
 
@@ -146,7 +164,7 @@ export async function deleteNote(id: string): Promise<PersonalNote[]> {
 
   const notes = await getNotes();
   const filtered = notes.filter((n) => n.id !== id);
-  localStorage.setItem(STORAGE_KEYS.NOTES, JSON.stringify(filtered));
+  safeStorageSet(STORAGE_KEYS.NOTES, JSON.stringify(filtered));
   return filtered;
 }
 
@@ -160,7 +178,7 @@ export async function getSettings(): Promise<AppSettings> {
     }
   }
 
-  const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+  const raw = safeStorageGet(STORAGE_KEYS.SETTINGS);
   if (!raw) return DEFAULT_SETTINGS;
   try {
     return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
@@ -179,5 +197,5 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
     }
   }
 
-  localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+  safeStorageSet(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
 }
